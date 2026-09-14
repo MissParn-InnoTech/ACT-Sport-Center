@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16
+    container_name: sportscenter-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Asia/Bangkok
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # ไฟล์ .sql ในโฟลเดอร์นี้จะถูกรันอัตโนมัติ "ครั้งแรก" ที่สร้าง volume เท่านั้น
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sportscenter-redis
+    ports:
+      - "6379:6379"
+
+  # เครื่องมือดูฐานข้อมูลผ่านเบราว์เซอร์  เปิดที่ http://localhost:8080
+  adminer:
+    image: adminer:4
+    container_name: sportscenter-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
