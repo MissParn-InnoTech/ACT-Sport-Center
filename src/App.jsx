@@ -445,57 +445,108 @@ export default function App() {
    ============================================================ */
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   return (
-    <div className="min-h-screen w-full flex" style={{ fontFamily: FONT, background: C.navyDeep }}>
-      <div className="hidden md:flex flex-col justify-between w-[42%] p-12 relative overflow-hidden"
-        style={{ background: `linear-gradient(165deg, ${C.navyDeep} 0%, ${C.navy} 65%, ${C.crimsonDeep} 130%)` }}>
-        <div className="absolute inset-0 opacity-[0.07]" style={{
-          backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 38px, ${C.white} 38px, ${C.white} 39px), repeating-linear-gradient(90deg, transparent, transparent 38px, ${C.white} 38px, ${C.white} 39px)`,
+    <div className="min-h-screen w-full flex" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
+      {/* LEFT — illustration panel (placeholder gradient; swap in a real image via LEFT_ART_URL if you have one) */}
+      <div className="hidden md:flex flex-col justify-end w-[46%] relative overflow-hidden"
+        style={{ background: `radial-gradient(120% 100% at 20% 10%, #6B3A22 0%, #2A1712 35%, #120A08 65%, #050403 100%)` }}>
+        <div className="absolute inset-0 opacity-[0.5]" style={{
+          background: "radial-gradient(60% 50% at 30% 25%, rgba(255,170,90,0.35), transparent 70%)",
         }} />
-        <div className="relative">
-          <div className="flex items-center gap-2 mb-1">
-            <Trophy size={22} style={{ color: C.accent }} />
-            <span className="text-xs tracking-wide font-semibold" style={{ color: "#D8D8DA" }}>ASSUMPTION COLLEGE THONBURI</span>
-          </div>
-          <h1 className="text-4xl font-bold text-white leading-tight mt-6">ACT Sport Center<br />Resource Intelligence</h1>
-          <p className="mt-4 text-sm max-w-sm" style={{ color: "#C7D0E8" }}>
-            แพลตฟอร์มบริหารทรัพยากร อุปกรณ์ สถานที่ และการยืม–คืนของศูนย์กีฬา
-            ที่แปลงข้อมูลให้เป็นการตัดสินใจของผู้บริหารแบบเรียลไทม์
-          </p>
+        <div className="absolute inset-0" style={{
+          backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 46px, rgba(255,255,255,0.03) 46px, rgba(255,255,255,0.03) 47px)`,
+        }} />
+        {/* mascot illustration */}
+        <div className="relative flex-1 flex items-end justify-center px-6 pt-10">
+          <img src="https://i.postimg.cc/7ZCLbZ9Q/Art-Work-Sport-Center.png" alt="ACT Sport Center mascots"
+            className="max-w-full max-h-full object-contain" style={{ objectPosition: "bottom" }} />
         </div>
-        <div className="relative grid grid-cols-3 gap-4 text-white">
-          {[["256", "รายการครุภัณฑ์"], ["17", "หมวดกีฬา"], ["18", "สถานที่/อาคาร"]].map(([n, l]) => (
-            <div key={l}>
-              <div className="text-2xl font-bold" style={{ color: C.accent }}>{n}</div>
-              <div className="text-xs mt-1" style={{ color: "#C7D0E8" }}>{l}</div>
-            </div>
-          ))}
+        <div className="relative px-10 pb-8">
+          <div className="text-xs tracking-wide font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>ASSUMPTION COLLEGE THONBURI</div>
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-8" style={{ background: C.paper }}>
-        <div className="w-full max-w-sm">
-          <h2 className="text-xl font-bold mb-1" style={{ color: C.ink }}>เข้าสู่ระบบด้วยรหัสครู</h2>
-          <p className="text-sm mb-6" style={{ color: C.slate }}>กรอก Teacher ID เพื่อเข้าใช้งาน ระบบจะโหลดสิทธิ์การใช้งานตามระดับของคุณโดยอัตโนมัติ</p>
-          <Field label="TEACHER ID">
-            <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && onLogin(loginId)}
-              placeholder="เช่น T00125" style={inputStyle} />
-          </Field>
-          {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: C.crimson }}><AlertTriangle size={13} />{err}</div>}
-          <Btn onClick={() => onLogin(loginId)} variant="crimson">เข้าสู่ระบบ <ChevronRight size={15} /></Btn>
+      {/* RIGHT — brushed-metal glass login panel */}
+      <div className="flex-1 relative flex items-center justify-center overflow-hidden" style={{
+        background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
+      }}>
+        {/* brushed-metal texture */}
+        <div className="absolute inset-0 opacity-30" style={{
+          backgroundImage: "repeating-linear-gradient(100deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 3px)",
+        }} />
+        <div className="absolute inset-0" style={{
+          background: "radial-gradient(60% 50% at 70% 20%, rgba(255,255,255,0.08), transparent 60%)",
+        }} />
 
-          <div className="mt-8 pt-6" style={{ borderTop: `1px solid ${C.line}` }}>
-            <div className="text-xs font-semibold mb-3" style={{ color: C.slate }}>บัญชีตัวอย่างสำหรับสาธิตแต่ละระดับสิทธิ์</div>
+        {/* vertical brand text along the right edge */}
+        <div className="hidden lg:flex absolute right-6 top-0 bottom-0 items-center">
+          <div className="text-3xl font-black tracking-widest select-none" style={{
+            writingMode: "vertical-rl", color: "transparent",
+            WebkitTextStroke: "1px rgba(255,255,255,0.18)",
+            letterSpacing: "0.15em",
+          }}>ACT SPORT CENTER</div>
+        </div>
+
+        <div className="relative w-full max-w-sm mx-6">
+          <div className="text-3xl font-light mb-6" style={{ color: "rgba(255,255,255,0.75)" }}>Welcome</div>
+
+          {/* glass card */}
+          <div className="relative p-6" style={{
+            background: "rgba(255,255,255,0.06)",
+            backdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,0.14)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)",
+          }}>
+            <h2 className="text-xl font-bold mb-5" style={{ color: C.white }}>Login</h2>
+
+            <div className="relative mb-4">
+              <User size={15} style={{ position: "absolute", left: 12, top: 13, color: "rgba(255,255,255,0.4)" }} />
+              <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && onLogin(loginId)}
+                placeholder="Teacher ID เช่น T00125"
+                style={{
+                  width: "100%", padding: "10px 12px 10px 34px", fontFamily: FONT, fontSize: 14,
+                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)",
+                  color: C.white, outline: "none",
+                }} />
+            </div>
+
+            {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#FF9EAE" }}><AlertTriangle size={13} />{err}</div>}
+
+            {/* GO button — circular red gem, glass-card style */}
+            <div className="flex items-center gap-3 mt-5">
+              <button onClick={() => onLogin(loginId)}
+                className="flex-1 py-2.5 text-sm font-semibold"
+                style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", color: C.white }}>
+                เข้าสู่ระบบ
+              </button>
+              <button onClick={() => onLogin(loginId)}
+                aria-label="Go"
+                className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center font-bold text-xs"
+                style={{
+                  background: `radial-gradient(circle at 32% 28%, #ff5a72, ${C.crimson} 45%, ${C.crimsonDeep} 100%)`,
+                  boxShadow: "0 0 18px rgba(200,30,58,0.55), inset 0 1px 1px rgba(255,255,255,0.4)",
+                  color: C.white,
+                }}>
+                GO
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>© 2026 Assumption College Thonburi · Sport Center Resource Intelligence · v1.0.0</div>
+
+          {/* demo accounts */}
+          <div className="mt-8 pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+            <div className="text-xs font-semibold mb-3" style={{ color: "rgba(255,255,255,0.45)" }}>บัญชีตัวอย่างสำหรับสาธิตแต่ละระดับสิทธิ์</div>
             <div className="space-y-2">
               {USERS.map((u) => (
                 <button key={u.id} onClick={() => onLogin(u.id)}
                   className="w-full flex items-center justify-between px-3 py-2.5 text-left"
-                  style={{ border: `1px solid ${C.line}`, background: C.white }}>
+                  style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)" }}>
                   <div>
-                    <div className="text-sm font-medium" style={{ color: C.ink }}>{u.name}</div>
-                    <div className="text-xs" style={{ color: C.mute }}>{u.title} · {u.id}</div>
+                    <div className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>{u.name}</div>
+                    <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{u.title} · {u.id}</div>
                   </div>
-                  <Pill fg={ROLE_META[u.role].tint} bg="#F2F3F7">{ROLE_META[u.role].label}</Pill>
+                  <Pill fg={C.accent} bg="rgba(228,53,79,0.12)">{ROLE_META[u.role].label}</Pill>
                 </button>
               ))}
             </div>
