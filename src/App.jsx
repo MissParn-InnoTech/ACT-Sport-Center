@@ -446,23 +446,10 @@ export default function App() {
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   return (
     <div className="min-h-screen w-full flex" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
-      {/* LEFT — illustration panel (placeholder gradient; swap in a real image via LEFT_ART_URL if you have one) */}
-      <div className="hidden md:flex flex-col justify-end w-[46%] relative overflow-hidden"
-        style={{ background: `radial-gradient(120% 100% at 20% 10%, #6B3A22 0%, #2A1712 35%, #120A08 65%, #050403 100%)` }}>
-        <div className="absolute inset-0 opacity-[0.5]" style={{
-          background: "radial-gradient(60% 50% at 30% 25%, rgba(255,170,90,0.35), transparent 70%)",
-        }} />
-        <div className="absolute inset-0" style={{
-          backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 46px, rgba(255,255,255,0.03) 46px, rgba(255,255,255,0.03) 47px)`,
-        }} />
-        {/* mascot illustration */}
-        <div className="relative flex-1 flex items-end justify-center px-6 pt-10">
-          <img src="https://i.postimg.cc/Dw70kfjW/Untitled-design-(5).png" alt="ACT Sport Center mascots"
-            className="max-w-full max-h-full object-contain" style={{ objectPosition: "bottom" }} />
-        </div>
-        <div className="relative px-10 pb-8">
-          <div className="text-xs tracking-wide font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>ASSUMPTION COLLEGE THONBURI</div>
-        </div>
+      {/* LEFT — illustration panel, image fills edge-to-edge */}
+      <div className="hidden md:block w-[46%] relative overflow-hidden">
+        <img src="https://i.postimg.cc/Dw70kfjW/Untitled-design-(5).png" alt="ACT Sport Center mascots"
+          className="absolute inset-0 w-full h-full" style={{ objectFit: "cover", objectPosition: "center" }} />
       </div>
 
       {/* RIGHT — brushed-metal glass login panel */}
