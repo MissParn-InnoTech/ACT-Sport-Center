@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, RadialBarChart, RadialBar,
@@ -77,7 +77,7 @@ async function loadFromSheets() {
     normal: Number(r["ปกติ"]) || 0, damaged: Number(r["ชำรุด"]) || 0,
     lost: Number(r["สูญหาย"]) || 0, disposed: Number(r["จำหน่ายออก"]) || 0,
     borrowed: Number(r["ถูกยืมอยู่"]) || 0, minAlert: Number(r["เตือนเมื่อเหลือ"]) || 0,
-    price: Number(r["ราคา/หน่วย"]) || 0, note: r["หมายเหตุ"] || "", _row: r._row,
+    price: Number(r["ราคา/หน่วย"]) || 0, note: r["หมายเหตุ"] || "", imageUrl: r["รูปภาพ"] || "", _row: r._row,
   }));
   const borrows = data.borrows.map((r) => ({
     id: `BR-${r._row}`, _row: r._row, date: fmtDate(r["วันที่ยืม"]), borrower: r["ผู้ยืม"],
@@ -91,11 +91,50 @@ async function loadFromSheets() {
     itemName: r["ชื่ออุปกรณ์"], qty: Number(r["จำนวน"]) || 0, symptom: r["อาการ / สาเหตุ"] || "",
     reporter: r["ผู้แจ้ง"], severity: "ปานกลาง", status: r["สถานะ"] || "รอตรวจสอบ",
   }));
-  return { items, borrows, damages };
+  const staff = (data.staff || []).map((r) => ({
+    id: String(r["ID"]), name: r["ชื่อ"], dept: r["หน่วยงาน"], role: r["หน้าที่"],
+    phone: r["เบอร์โทร"] || "", level: (r["Level"] || "L1").trim(),
+  }));
+  return { items, borrows, damages, staff };
 }
 function postToSheets(action, payload) {
   if (!API_URL) return Promise.resolve();
   return fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, payload }) }).catch(() => {});
+}
+
+// resize + compress a File to a JPEG data URL's base64 body, so uploads stay small
+function compressImage(file, maxW = 1000, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
+      };
+      img.onerror = () => reject(new Error("อ่านไฟล์รูปไม่สำเร็จ"));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error("อ่านไฟล์ไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadItemImage(code, file) {
+  if (!API_URL) throw new Error("ยังไม่ได้เชื่อมต่อ Google Sheets backend — อัปโหลดรูปไม่ได้ในโหมดตัวอย่างนี้");
+  const base64 = await compressImage(file);
+  const res = await fetch(API_URL, {
+    method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "uploadImage", payload: { code, filename: `${code}.jpg`, mimeType: "image/jpeg", base64 } }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "อัปโหลดไม่สำเร็จ");
+  return data.result.url;
 }
 
 /* ============================================================
@@ -227,10 +266,66 @@ function seedItems() {
       id: `${code}-${i}`, code, name, brand, catCode, loc, owner,
       normal, damaged, lost, disposed, borrowed: 0,
       minAlert: normal + damaged > 0 && normal <= 2 ? 2 : 0,
-      price: 0, note,
+      price: 0, note, imageUrl: "",
     };
   });
 }
+
+const STAFF = [
+  { id: "10645", name: "น.ส.วรรณา จิรพลานุรักษ์", dept: "ศูนย์กีฬา", role: "สอนกีฬา แผนก EP", phone: "099-453-0235", level: "L1" },
+  { id: "10668", name: "นายชวินทร์ โรยอุตระ", dept: "ศูนย์กีฬา", role: "งานศูนย์กีฬา", phone: "085-155-4533", level: "L2" },
+  { id: "10691", name: "น.ส.รัตนาภรณ์ ลิ้มทุติเนตร", dept: "งานสระว่ายน้ำ", role: "หัวหน้างานสระว่ายน้ำ", phone: "084-356-5748", level: "L2" },
+  { id: "10692", name: "นายชาญวิทย์ พึ่งอิ่ม", dept: "ศูนย์กีฬา", role: "หัวหน้าศูนย์กีฬา", phone: "089-524-1646", level: "L3" },
+  { id: "10711", name: "นายณัฐวุฒิ ดอกกฐิน", dept: "งานกิจกรรมนักเรียน", role: "งานกิจกรรมนักเรียน/งานสอนกีฬา", phone: "087-763-3250", level: "L1" },
+  { id: "10755", name: "นายศุภรักษ์ สุขพันธ์", dept: "ศูนย์กีฬา", role: "ดูแล ACT Sport Arena/สอนกีฬาเทนนิส", phone: "080-665-5530", level: "L1" },
+  { id: "10788", name: "น.ส.มลาภรณ์ ซังปาน", dept: "ศูนย์กีฬา", role: "งานจัดการเรียนการสอนศูนย์กีฬา", phone: "090-708-6748", level: "L2" },
+  { id: "10800", name: "นายสุขพงษ์ ประดับพลอย", dept: "ศูนย์กีฬา", role: "ครูผู้สอน ฟุตบอลป.6", phone: "099-396-7779", level: "L1" },
+  { id: "10804", name: "นายกรภัทร์ นิ่มนวน", dept: "ศูนย์กีฬา", role: "ครูผู้สอน ฟุตบอลป.4", phone: "087-714-8914", level: "L1" },
+  { id: "10819", name: "นายรณกฤต พรจิรกิตติพงศ์", dept: "ศูนย์ฟิตเนส", role: "ผู้ประสานงานศูนย์ฟิตเนส", phone: "081-410-1200", level: "L2" },
+  { id: "10830", name: "น.ส.ภวรัญชน์ ผลเจริญ", dept: "ศูนย์กีฬา", role: "งานศูนย์กีฬา", phone: "095-167-4514", level: "L2" },
+  { id: "20242", name: "นางวรัญญา ตันพิริยะกุล", dept: "ศูนย์กีฬา", role: "ธุรการศูนย์กีฬา", phone: "095-567-9360", level: "L2" },
+  { id: "20246", name: "น.ส.ธนัญญา แสงศิโรเวฐน์", dept: "ศูนย์ฟิตเนส", role: "ประจำเคาท์เตอร์ศูนย์ฟิตเนส", phone: "", level: "L1" },
+  { id: "20197", name: "นายธนกร บุญจรัส", dept: "งานสระว่ายน้ำ", role: "ผู้ฝึกสอนกีฬาว่ายน้ำ", phone: "084-209-6530", level: "L1" },
+  { id: "62271", name: "นางจำปี เอี่ยมกลิ่น", dept: "งานสระว่ายน้ำ", role: "พนักงานประจำสระว่ายน้ำ", phone: "064-131-8663", level: "L1" },
+  { id: "10360", name: "น.ส.เพชรพรรณ์ เหมะสุรินทร์", dept: "งานสระว่ายน้ำ", role: "ประจำเคาท์เตอร์สระว่ายน้ำ", phone: "083-023-2618", level: "L1" },
+  { id: "50013", name: "น.ส.กนกวรรณ หม่องสนธิ", dept: "ศูนย์กีฬา", role: "งานการเรียนการสอนกีฬา/สอนเต้น", phone: "063-1596459", level: "L1" },
+  { id: "50051", name: "นายธีระพงศ์ ปานเด", dept: "ศูนย์กีฬา", role: "ผู้ฝึกสอนวิชาศิลปะการเต้น/สอนวิชาศิลป์ดนตรี ม.4-6", phone: "099-289-8366", level: "L1" },
+  { id: "50052", name: "น.ส.กฤติยา ต่อสกุล", dept: "ศูนย์กีฬา", role: "ผู้ฝึกสอนวิชาศิลปะการเต้น", phone: "088-646-6368", level: "L2" },
+  { id: "50053", name: "น.ส.ภวรัญชน์ ผลเจริญ", dept: "บริหารฝ่าย", role: "", phone: "096-642-9968", level: "L2" },
+  { id: "50060", name: "นายธภัทร์ ถิ่นทิพย์", dept: "สระว่ายน้ำ", role: "ผู้ฝึกสอนทีมสโมสรว่ายน้ำ/ดูแลสระว่ายน้ำ", phone: "080-054-6597", level: "L1" },
+  { id: "50062", name: "นายอนุวัฒน์ เทพประเทียน", dept: "ศูนย์กีฬา", role: "ผู้ฝึกสอนวิชาเทเบิลเทนนิส/สอนเทเบิลเทนนิส", phone: "085095943", level: "L1" },
+  { id: "40001", name: "นายวุฒิพร ไชยเผือก", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "083-5555727", level: "L1" },
+  { id: "40002", name: "นายกรณ์พงษ์ พงษ์ศิริปรีดา", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "081-7713306", level: "L1" },
+  { id: "40004", name: "นายวิทวัส ศรีระโส", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "084-7329426", level: "L1" },
+  { id: "40005", name: "นายณัทพงษ์ ศรีไชยกิจ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "085-5167152", level: "L1" },
+  { id: "40008", name: "น.สณัฏฐกันย์ วรรณตุง", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทควันโด", phone: "086-9943119", level: "L1" },
+  { id: "40009", name: "นายธนรัฐ จาตุกานต์นนท์", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนกอล์ฟ", phone: "082-6639149", level: "L1" },
+  { id: "40021", name: "นายประทีป กลับบ้านเกาะ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "097-2950564", level: "L1" },
+  { id: "40022", name: "นายศาสตรา อินทรประเสริฐ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเทนนิส", phone: "091-8746480", level: "L1" },
+  { id: "40023", name: "นายสิรภพ จิรจตุรพักตร์", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนปีนหน้าผา", phone: "065-4788744", level: "L1" },
+  { id: "40023", name: "นายอัมรินทร์ จุลแวง", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนมวยไทย", phone: "094-5678983", level: "L1" },
+  { id: "40024", name: "นายทศพล ภูสมหมาย", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนปีนหน้าผา", phone: "095-5071621", level: "L1" },
+  { id: "40025", name: "นายประพัฒน์ เจริญเณรรักษา", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "094-5501256", level: "L1" },
+  { id: "40030", name: "นายเอกพงษ์ แสงเขียว", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "083-102-4750", level: "L1" },
+  { id: "40031", name: "นายคชภัค กุลกวีวุฒิ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "089-513-2239", level: "L1" },
+  { id: "40033", name: "นายณัฐวินท์ ลิ่มสกุล", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนกอล์ฟ", phone: "082-5274340", level: "L1" },
+  { id: "40036", name: "นายแหลมทอง รัตนสมัย", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนมวย", phone: "086-019-8341", level: "L1" },
+  { id: "40037", name: "นายอานุภาพ พณิชีพ", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนปีนผา", phone: "0887256147", level: "L1" },
+  { id: "40038", name: "นายธีรศักดิ์ อินต๊ะเรือน", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนฟุตซอล", phone: "0852495268", level: "L1" },
+  { id: "40039", name: "นายกรวสิษฎิ์ แก้วกระหนก", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเต้น", phone: "0825659923", level: "L1" },
+  { id: "40040", name: "น.ส.มนต์ทิรา พรหมาพันธุ์", dept: "ครูสอนกีฬาพิเศษ", role: "เทควันโด", phone: "095-905-0368", level: "L1" },
+  { id: "40043", name: "นายอมรเทพ เจริญชัย", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนปีนผา", phone: "064-348-3071", level: "L1" },
+  { id: "40044", name: "นายรุ่งรดิศ ทานะมัย", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนฟุตซอล", phone: "629355988", level: "L1" },
+  { id: "40045", name: "นายวัชระ เขียวอุ่ม", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนเต้น", phone: "0826748604", level: "L1" },
+  { id: "40047", name: "นายกศมพงศ์ ไตรสมบูรณ์", dept: "ครูสอนกีฬาพิเศษ", role: "ครูสอนว่ายน้ำ", phone: "080-264-2915", level: "L1" },
+  { id: "60001", name: "น.ส.สุชารัตน์ ภาพทอง", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Yoga", phone: "087-0564-696", level: "L1" },
+  { id: "60002", name: "น.ส.วนิดา จิรเจริญจิตต์", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Yoga", phone: "085-3306-629", level: "L1" },
+  { id: "60005", name: "นายเจษฎา พินิจมั้ง", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Weight Training", phone: "097-1313063", level: "L1" },
+  { id: "60007", name: "นายพีรวัส ชูเพชร", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Gym Ball", phone: "087-1094565", level: "L1" },
+  { id: "60006", name: "นายกรันติพล โชคศักดิ์ศรีกุล", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Mind & Body", phone: "085-9952-464", level: "L1" },
+  { id: "60008", name: "น.ส.ชฏาภรณ์ จันทะหงษ์", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Zumba Dance", phone: "080-1101-160", level: "L1" },
+  { id: "60009", name: "นายมานิตย์ บุบผาสุข", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Power Fighting", phone: "090-9722716", level: "L1" },
+];
 
 const USERS = [
   { id: "T00500", name: "มิสสุพัตรา แสงทอง", role: "L0", dept: "กลุ่มสาระภาษาไทย (นอกสังกัดศูนย์กีฬา)", title: "ครูนอกสังกัดศูนย์กีฬา" },
@@ -251,9 +346,9 @@ const ROLE_META = {
 const NAV = {
   L0: [["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
   L1: [["dashboard", "งานของฉัน", LayoutDashboard], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench]],
-  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench]],
-  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
-  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
+  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users]],
+  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
+  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
 };
 
 const canEdit = (role) => role === "L2" || role === "L3";
@@ -366,6 +461,7 @@ export default function App() {
   ]);
   const [damages, setDamages] = useState([]);
   const [actionsLog, setActionsLog] = useState([]);
+  const [staffList, setStaffList] = useState(STAFF);
 
   const [sheetsError, setSheetsError] = useState("");
 
@@ -374,8 +470,9 @@ export default function App() {
     (async () => {
       if (API_URL) {
         try {
-          const { items: si, borrows: sb, damages: sd } = await loadFromSheets();
+          const { items: si, borrows: sb, damages: sd, staff: ss } = await loadFromSheets();
           setItems(si); setBorrows(sb); setDamages(sd);
+          if (ss && ss.length) setStaffList(ss);
         } catch (e) { setSheetsError("เชื่อมต่อ Google Sheets ไม่สำเร็จ — กำลังใช้ข้อมูลตัวอย่างในเครื่องแทน"); }
         setLoading(false);
         return;
@@ -401,9 +498,16 @@ export default function App() {
   useEffect(() => { if (!loading) window.storage?.set("actions", JSON.stringify(actionsLog), true).catch(() => {}); }, [actionsLog, loading]);
 
   const handleLogin = (id) => {
-    const u = USERS.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
-    if (!u) { setLoginErr("ไม่พบรหัสครู (Teacher ID) นี้ในระบบ — ลองเลือกบัญชีตัวอย่างด้านล่าง"); return; }
-    setUser(u); setTab(u.role === "L0" ? "borrow" : "dashboard"); setLoginErr("");
+    const demo = USERS.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
+    if (demo) { setUser(demo); setTab(demo.role === "L0" ? "borrow" : "dashboard"); setLoginErr(""); return; }
+    const s = staffList.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
+    if (s) {
+      const role = ["L0", "L1", "L2", "L3", "L4"].includes(s.level) ? s.level : "L1";
+      setUser({ id: s.id, name: s.name, role, dept: s.dept, title: s.role });
+      setTab(role === "L0" ? "borrow" : "dashboard"); setLoginErr("");
+      return;
+    }
+    setLoginErr("ไม่พบรหัสครู (Teacher ID) นี้ในระบบ — ลองเลือกบัญชีตัวอย่างด้านล่าง");
   };
 
   const logAction = useCallback((text) => {
@@ -429,6 +533,7 @@ export default function App() {
           {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} setTab={setTab} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
           {tab === "facility" && <Facility items={items} />}
+          {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
           {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
           {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} logAction={logAction} />}
           {tab === "analytics" && <Analytics items={items} />}
@@ -744,7 +849,10 @@ function Inventory({ user, items, setItems, logAction }) {
   const [cat, setCat] = useState("ALL");
   const [edit, setEdit] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
   const editable = canEdit(user.role) || canManage(user.role);
+  const manager = canManage(user.role);
 
   const filtered = items.filter((i) =>
     (cat === "ALL" || i.catCode === cat) &&
@@ -758,10 +866,27 @@ function Inventory({ user, items, setItems, logAction }) {
     setEdit(null);
   };
 
+  const addItem = (form) => {
+    const rec = { id: form.code, code: form.code, name: form.name, brand: form.brand, catCode: form.catCode,
+      loc: form.loc, owner: form.owner, normal: form.normal, damaged: form.damaged, lost: 0, disposed: 0,
+      borrowed: 0, minAlert: form.minAlert, price: form.price, note: form.note, imageUrl: "" };
+    setItems((prev) => [rec, ...prev]);
+    logAction(`เพิ่มครุภัณฑ์ใหม่ ${form.code} — ${form.name}`);
+    postToSheets("addItem", { ...form, catName: catName(form.catCode) });
+    setShowNew(false);
+  };
+
+  const deleteItem = (it) => {
+    setItems((prev) => prev.filter((x) => x.id !== it.id));
+    logAction(`ลบครุภัณฑ์ ${it.code} — ${it.name}`);
+    postToSheets("deleteItem", { code: it.code });
+    setConfirmDel(null);
+  };
+
   return (
     <div>
       <SectionHead eyebrow="INVENTORY" title="ทะเบียนครุภัณฑ์" sub={`${filtered.length} รายการ จากทั้งหมด ${items.length} รายการ`}
-        right={!editable && <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
+        right={manager ? <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มครุภัณฑ์ใหม่</Btn> : !editable && <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
 
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-sm">
@@ -803,11 +928,14 @@ function Inventory({ user, items, setItems, logAction }) {
                   <td className="px-3 py-2 text-xs font-semibold">{avail}</td>
                   <td className="px-3 py-2"><Pill fg={s.fg} bg={s.bg}>{s.label}</Pill></td>
                   <td className="px-3 py-2">
-                    {editable ? (
-                      <button onClick={() => setEdit(it)}><Pencil size={14} style={{ color: C.navy }} /></button>
-                    ) : (
-                      <Eye size={14} style={{ color: C.mute }} />
-                    )}
+                    <div className="flex items-center gap-2">
+                      {editable ? (
+                        <button onClick={() => setEdit(it)}><Pencil size={14} style={{ color: C.navy }} /></button>
+                      ) : (
+                        <Eye size={14} style={{ color: C.mute }} />
+                      )}
+                      {manager && <button onClick={() => setConfirmDel(it)}><X size={14} style={{ color: C.crimson }} /></button>}
+                    </div>
                   </td>
                 </tr>
               );
@@ -821,21 +949,119 @@ function Inventory({ user, items, setItems, logAction }) {
           <ItemEditForm item={edit} onSave={saveEdit} manager={canManage(user.role)} />
         </Modal>
       )}
-      {preview && <ItemImagePopup item={preview} onClose={() => setPreview(null)} />}
+      {showNew && (
+        <Modal title="เพิ่มครุภัณฑ์ใหม่" onClose={() => setShowNew(false)} wide>
+          <ItemAddForm onSave={addItem} />
+        </Modal>
+      )}
+      {confirmDel && (
+        <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
+          <p className="text-sm mb-4" style={{ color: C.ink }}>
+            ต้องการลบ <b>{confirmDel.code} — {confirmDel.name}</b> ออกจากทะเบียนใช่หรือไม่? การลบนี้จะลบแถวออกจาก Google Sheet ด้วย และย้อนกลับไม่ได้
+          </p>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => deleteItem(confirmDel)} icon={X}>ยืนยันลบ</Btn>
+          </div>
+        </Modal>
+      )}
+      {preview && (
+        <ItemImagePopup
+          item={preview}
+          onClose={() => setPreview(null)}
+          editable={editable}
+          onUploaded={(code, url) => {
+            setItems((prev) => prev.map((i) => (i.code === code ? { ...i, imageUrl: url } : i)));
+            setPreview((prev) => (prev ? { ...prev, imageUrl: url } : prev));
+            logAction(`อัปโหลดรูป ${code}`);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function ItemImagePopup({ item, onClose }) {
+function ItemAddForm({ onSave }) {
+  const [form, setForm] = useState({ code: "", name: "", brand: "", catCode: CATEGORIES[0].code, loc: "", owner: "", normal: 1, damaged: 0, minAlert: 0, price: 0, note: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setNum = (k) => (e) => setForm((f) => ({ ...f, [k]: Number(e.target.value) }));
+  const valid = form.code.trim() && form.name.trim();
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <Field label="รหัสครุภัณฑ์ *"><input value={form.code} onChange={set("code")} placeholder="เช่น BDM-001" style={inputStyle} /></Field>
+      <Field label="ชื่อรายการ *"><input value={form.name} onChange={set("name")} style={inputStyle} /></Field>
+      <Field label="ยี่ห้อ/รุ่น"><input value={form.brand} onChange={set("brand")} style={inputStyle} /></Field>
+      <Field label="หมวด">
+        <select value={form.catCode} onChange={set("catCode")} style={inputStyle}>
+          {CATEGORIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </select>
+      </Field>
+      <Field label="สถานที่เก็บ">
+        <select value={form.loc} onChange={set("loc")} style={inputStyle}>
+          <option value="">— เลือกสถานที่ —</option>
+          {LOCATIONS.map((l) => <option key={l.code} value={l.name}>{l.name}</option>)}
+        </select>
+      </Field>
+      <Field label="ผู้ดูแล"><input value={form.owner} onChange={set("owner")} style={inputStyle} /></Field>
+      <Field label="จำนวนปกติ"><input type="number" value={form.normal} onChange={setNum("normal")} style={inputStyle} /></Field>
+      <Field label="จำนวนชำรุด"><input type="number" value={form.damaged} onChange={setNum("damaged")} style={inputStyle} /></Field>
+      <Field label="ราคา/หน่วย (บาท)"><input type="number" value={form.price} onChange={setNum("price")} style={inputStyle} /></Field>
+      <Field label="เตือนเมื่อเหลือ"><input type="number" value={form.minAlert} onChange={setNum("minAlert")} style={inputStyle} /></Field>
+      <div className="col-span-2">
+        <Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field>
+      </div>
+      <div className="col-span-2 flex justify-end mt-2">
+        <Btn onClick={() => onSave(form)} disabled={!valid}>บันทึกครุภัณฑ์ใหม่</Btn>
+      </div>
+    </div>
+  );
+}
+
+function ItemImagePopup({ item, onClose, editable, onUploaded }) {
   const s = statusOf(item);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+  const fileRef = useRef(null);
+
+  const pick = () => fileRef.current?.click();
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr(""); setUploading(true);
+    try {
+      const url = await uploadItemImage(item.code, file);
+      onUploaded(item.code, url);
+    } catch (ex) {
+      setErr(ex.message || "อัปโหลดไม่สำเร็จ");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,10,10,0.65)" }} onClick={onClose}>
       <div className="w-full flex flex-col" style={{ maxWidth: 380, background: C.white, border: `1px solid ${C.line}` }} onClick={(e) => e.stopPropagation()}>
-        <div className="relative flex items-center justify-center" style={{ height: 200, background: `linear-gradient(150deg, ${C.navyDeep}, ${C.navy})` }}>
-          <button onClick={onClose} className="absolute top-2 right-2"><X size={18} color={C.white} /></button>
-          <Package size={64} color={C.accent} strokeWidth={1.25} />
-          <div className="absolute bottom-2 left-2 text-[11px]" style={{ color: "#C9C9CC" }}>ยังไม่มีรูปถ่ายจริงในระบบ — แสดงไอคอนตัวแทน</div>
+        <div className="relative flex items-center justify-center overflow-hidden" style={{ height: 200, background: item.imageUrl ? "#000" : `linear-gradient(150deg, ${C.navyDeep}, ${C.navy})` }}>
+          <button onClick={onClose} className="absolute top-2 right-2 z-10"><X size={18} color={C.white} /></button>
+          {item.imageUrl ? (
+            <img src={item.imageUrl} alt={item.name} className="w-full h-full" style={{ objectFit: "cover" }} />
+          ) : (
+            <>
+              <Package size={64} color={C.accent} strokeWidth={1.25} />
+              <div className="absolute bottom-2 left-2 text-[11px]" style={{ color: "#C9C9CC" }}>ยังไม่มีรูปถ่ายจริงในระบบ — แสดงไอคอนตัวแทน</div>
+            </>
+          )}
+          {editable && (
+            <button onClick={pick} disabled={uploading}
+              className="absolute bottom-2 right-2 z-10 px-2.5 py-1 text-xs font-medium flex items-center gap-1"
+              style={{ background: "rgba(0,0,0,0.55)", color: C.white, border: "1px solid rgba(255,255,255,0.3)" }}>
+              <Plus size={12} /> {uploading ? "กำลังอัปโหลด..." : item.imageUrl ? "เปลี่ยนรูป" : "อัปโหลดรูป"}
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
         </div>
+        {err && <div className="px-4 pt-2 text-xs" style={{ color: C.crimson }}>{err}</div>}
         <div className="p-4">
           <div className="text-xs font-mono mb-1" style={{ color: C.mute }}>{item.code}</div>
           <div className="font-bold text-base mb-1" style={{ color: C.ink }}>{item.name}</div>
@@ -908,6 +1134,138 @@ function Facility({ items }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   STAFF DIRECTORY — safe subset only (name, dept, role, work phone)
+   Full HR data (ID card, salary, address, DOB, religion) is kept
+   OUT of this system entirely — delivered separately as an
+   internal-only spreadsheet, never wired into the web app or the
+   Google Sheets backend.
+   ============================================================ */
+function StaffDirectory({ staff, setStaffList, user, logAction }) {
+  const [q, setQ] = useState("");
+  const [dept, setDept] = useState("ALL");
+  const [edit, setEdit] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const manager = canManage(user.role);
+  const depts = useMemo(() => Array.from(new Set(staff.map((s) => s.dept))), [staff]);
+  const filtered = staff.filter((s) =>
+    (dept === "ALL" || s.dept === dept) &&
+    (s.name.toLowerCase().includes(q.toLowerCase()) || s.role.toLowerCase().includes(q.toLowerCase()))
+  );
+
+  const saveEdit = (patch) => {
+    setStaffList((prev) => prev.map((s) => (s.id === edit.id ? { ...s, ...patch } : s)));
+    logAction(`แก้ไขบุคลากร ${edit.id} — ${edit.name}`);
+    postToSheets("updateStaff", { id: edit.id, ...patch });
+    setEdit(null);
+  };
+
+  const addStaff = (form) => {
+    setStaffList((prev) => [{ ...form }, ...prev]);
+    logAction(`เพิ่มบุคลากรใหม่ ${form.id} — ${form.name}`);
+    postToSheets("addStaff", form);
+    setShowNew(false);
+  };
+
+  const deleteStaff = (s) => {
+    setStaffList((prev) => prev.filter((x) => x.id !== s.id));
+    logAction(`ลบบุคลากร ${s.id} — ${s.name}`);
+    postToSheets("deleteStaff", { id: s.id });
+    setConfirmDel(null);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="STAFF DIRECTORY" title="ทำเนียบบุคลากรศูนย์กีฬา"
+        sub={`${filtered.length} คน จากทั้งหมด ${staff.length} คน — แสดงเฉพาะชื่อ/หน่วยงาน/หน้าที่/เบอร์ติดต่องาน (ไม่มีข้อมูลอ่อนไหว)`}
+        right={manager ? <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มบุคลากร</Btn> : <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> ดูอย่างเดียว</Pill>} />
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative flex-1 max-w-sm">
+          <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่อหรือหน้าที่..."
+            style={{ ...inputStyle, paddingLeft: 32 }} />
+        </div>
+        <select value={dept} onChange={(e) => setDept(e.target.value)} style={{ ...inputStyle, width: 220 }}>
+          <option value="ALL">ทุกหน่วยงาน</option>
+          {depts.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {filtered.map((s) => (
+          <div key={s.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center" style={{ background: C.navy, color: C.white }}>
+                  <User size={15} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate" style={{ color: C.ink }}>{s.name}</div>
+                  <div className="text-xs" style={{ color: C.mute }}>{s.dept}</div>
+                </div>
+              </div>
+              {manager && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button onClick={() => setEdit(s)}><Pencil size={13} style={{ color: C.navy }} /></button>
+                  <button onClick={() => setConfirmDel(s)}><X size={13} style={{ color: C.crimson }} /></button>
+                </div>
+              )}
+            </div>
+            <div className="text-xs mb-1" style={{ color: C.slate }}>{s.role || "-"}</div>
+            <div className="flex items-center justify-between">
+              {s.phone && <div className="text-xs font-mono" style={{ color: C.navySoft }}>{s.phone}</div>}
+              {s.level && <Pill fg={ROLE_META[s.level]?.tint || C.navy} bg="#F2F3F7">{s.level}</Pill>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {edit && (
+        <Modal title={`แก้ไขบุคลากร: ${edit.name}`} onClose={() => setEdit(null)}>
+          <StaffForm initial={edit} onSave={saveEdit} idEditable={false} />
+        </Modal>
+      )}
+      {showNew && (
+        <Modal title="เพิ่มบุคลากรใหม่" onClose={() => setShowNew(false)}>
+          <StaffForm initial={{ id: "", name: "", dept: "", role: "", phone: "", level: "L1" }} onSave={addStaff} idEditable />
+        </Modal>
+      )}
+      {confirmDel && (
+        <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
+          <p className="text-sm mb-4" style={{ color: C.ink }}>ต้องการลบ <b>{confirmDel.name}</b> ออกจากทำเนียบบุคลากรใช่หรือไม่? การลบนี้จะลบแถวออกจาก Google Sheet ด้วย และย้อนกลับไม่ได้</p>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => deleteStaff(confirmDel)} icon={X}>ยืนยันลบ</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function StaffForm({ initial, onSave, idEditable }) {
+  const [form, setForm] = useState(initial);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.id.trim() && form.name.trim();
+  return (
+    <div>
+      <Field label="Teacher ID *"><input value={form.id} onChange={set("id")} disabled={!idEditable} style={{ ...inputStyle, opacity: idEditable ? 1 : 0.6 }} /></Field>
+      <Field label="ชื่อ-นามสกุล *"><input value={form.name} onChange={set("name")} style={inputStyle} /></Field>
+      <Field label="หน่วยงาน"><input value={form.dept} onChange={set("dept")} style={inputStyle} /></Field>
+      <Field label="หน้าที่รับผิดชอบ"><input value={form.role} onChange={set("role")} style={inputStyle} /></Field>
+      <Field label="เบอร์โทรงาน"><input value={form.phone} onChange={set("phone")} style={inputStyle} /></Field>
+      <Field label="สิทธิ์การใช้งาน (Level)">
+        <select value={form.level} onChange={set("level")} style={inputStyle}>
+          {["L0", "L1", "L2", "L3", "L4"].map((l) => <option key={l} value={l}>{l} — {ROLE_META[l].label}</option>)}
+        </select>
+      </Field>
+      <div className="flex justify-end mt-2">
+        <Btn onClick={() => onSave(form)} disabled={!valid}>บันทึก</Btn>
       </div>
     </div>
   );
