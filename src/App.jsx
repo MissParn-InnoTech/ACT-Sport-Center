@@ -457,7 +457,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         }} />
         {/* mascot illustration */}
         <div className="relative flex-1 flex items-end justify-center px-6 pt-10">
-          <img src="https://i.postimg.cc/7YzFwgGY/Untitled-design-(2).png" alt="ACT Sport Center mascots"
+          <img src="https://i.postimg.cc/Dw70kfjW/Untitled-design-(5).png" alt="ACT Sport Center mascots"
             className="max-w-full max-h-full object-contain" style={{ objectPosition: "bottom" }} />
         </div>
         <div className="relative px-10 pb-8">
