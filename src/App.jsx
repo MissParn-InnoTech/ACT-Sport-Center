@@ -9,7 +9,16 @@ import {
   AlertTriangle, Clock, Plus, X, Eye, Pencil, ShieldCheck, TrendingUp,
   Building2, Shirt, Trophy, Download, Bell, ChevronDown, User, Users,
   ClipboardList, MessageSquare, UserCheck, Play, CalendarDays, ListChecks,
+  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock,
 } from "lucide-react";
+import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
+import "react-big-calendar/lib/css/react-big-calendar.css";
+import { format, parse, startOfWeek, getDay } from "date-fns";
+import { th } from "date-fns/locale/th";
+
+const calendarLocalizer = dateFnsLocalizer({
+  format, parse, startOfWeek: () => startOfWeek(new Date(), { locale: th }), getDay, locales: { th },
+});
 
 /* ============================================================
    DESIGN TOKENS — ACT Sport Center
@@ -94,7 +103,7 @@ async function loadFromSheets() {
   }));
   const staff = (data.staff || []).map((r) => ({
     id: String(r["ID"]), name: r["ชื่อ"], dept: r["หน่วยงาน"], role: r["หน้าที่"],
-    phone: r["เบอร์โทร"] || "", level: (r["Level"] || "L1").trim(),
+    phone: r["เบอร์โทร"] || "", level: (r["Level"] || "L1").trim(), photoUrl: r["รูปโปรไฟล์"] || "",
   }));
   const schedule = (data.schedule || []).map((r) => ({
     id: `SC-${r._row}`, _row: r._row, day: r["วัน"], start: fmtTime(r["เวลาเริ่ม"]), end: fmtTime(r["เวลาจบ"]),
@@ -111,13 +120,54 @@ async function loadFromSheets() {
     taskType: r["TaskType"] || "general", comments: r["Comments"] || "",
     createdDate: r["CreatedDate"] || "", completedDate: r["CompletedDate"] || "",
   }));
-  return { items, borrows, damages, staff, schedule, tasks };
+  const orgEvents = (data.orgEvents || []).map((r) => ({
+    id: r["ID"], title: r["ชื่องาน"] || "", start: fmtDate(r["วันที่เริ่ม"]), end: fmtDate(r["วันที่สิ้นสุด"]) || fmtDate(r["วันที่เริ่ม"]),
+    allDay: r["ทั้งวัน"] === "TRUE" || r["ทั้งวัน"] === true, dept: r["หน่วยงานเจ้าของ"] || "", owner: r["ผู้รับผิดชอบ"] || "",
+    loc: r["สถานที่"] || "", description: r["รายละเอียด"] || "", status: r["สถานะ"] || "scheduled",
+  }));
+  const repairs = (data.repairs || []).map((r) => ({
+    id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", date: fmtDate(r["วันที่ซ่อม"]),
+    description: r["รายละเอียด"] || "", cost: Number(r["ค่าใช้จ่าย"]) || 0, owner: r["ผู้รับผิดชอบ"] || "",
+    vendor: r["ร้าน/ช่าง"] || "", receiptUrl: r["ลิงก์ใบเสร็จ"] || "", status: r["สถานะ"] || "",
+  }));
+  const pmSchedule = (data.pmSchedule || []).map((r) => ({
+    id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", cycle: r["รอบซ่อม"] || "",
+    nextDate: fmtDate(r["วันนัดถัดไป"]), owner: r["ผู้รับผิดชอบ"] || "", note: r["หมายเหตุ"] || "",
+  }));
+  const docs = (data.docs || []).map((r) => ({
+    id: r["ID"], title: r["ชื่อเอกสาร"] || "", category: r["หมวดหมู่"] || "อื่นๆ", url: r["ลิงก์ไฟล์"] || "",
+    uploadedBy: r["อัปโหลดโดย"] || "", updatedDate: fmtDate(r["วันที่อัปเดต"]), version: r["เวอร์ชัน"] || "1",
+  }));
+  return { items, borrows, damages, staff, schedule, tasks, orgEvents, repairs, pmSchedule, docs };
 }
 function fmtTime(v) {
   if (!v) return "";
   if (typeof v === "string") return v;
   try { const d = new Date(v); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; } catch { return String(v); }
 }
+
+async function loadBudgetData(teacherId) {
+  const data = await sheetsFetch(`${API_URL}?action=budgetData&teacherId=${encodeURIComponent(teacherId)}`);
+  if (!data.ok && data.error && !("budgets" in data)) throw new Error(data.error || "load failed");
+  return {
+    isManager: !!data.isManager,
+    accessNote: data.error || "",
+    budgets: (data.budgets || []).map((b) => ({
+      id: b["ID"], name: b["ชื่อโครงการ"], owner: b["ผู้รับผิดชอบ"], dept: b["หน่วยงาน"],
+      amount: Number(b["งบที่ได้รับ"]) || 0, startDate: fmtDate(b["วันที่เริ่ม"]), endDate: fmtDate(b["วันที่สิ้นสุด"]),
+      status: b["สถานะ"] || "active", approvedBy: b["ผู้อนุมัติ"],
+    })),
+    income: (data.income || []).map((i) => ({
+      id: i["ID"], date: fmtDate(i["วันที่"]), type: i["ประเภท"], amount: Number(i["จำนวนเงิน"]) || 0,
+      receivedBy: i["ผู้รับเงิน"], receiptRef: i["อ้างอิงใบเสร็จ"], note: i["หมายเหตุ"],
+    })),
+    expenses: (data.expenses || []).map((e) => ({
+      id: e["ID"], budgetId: e["อ้างอิงงบประมาณ"], date: fmtDate(e["วันที่"]), item: e["รายการ"],
+      amount: Number(e["จำนวนเงิน"]) || 0, claimant: e["ผู้เบิก"], approvalStatus: e["สถานะอนุมัติ"] || "รออนุมัติ", receiptUrl: e["ใบเสร็จ"],
+    })),
+  };
+}
+
 
 /* ============================================================
    WORK MANAGEMENT helpers
@@ -195,6 +245,17 @@ async function uploadItemImage(code, file) {
   const res = await fetch(API_URL, {
     method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({ action: "uploadImage", payload: { code, filename: `${code}.jpg`, mimeType: "image/jpeg", base64 } }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "อัปโหลดไม่สำเร็จ");
+  return data.result.url;
+}
+async function uploadProfilePhoto(teacherId, file) {
+  if (!API_URL) throw new Error("ยังไม่ได้เชื่อมต่อ Google Sheets backend — อัปโหลดรูปไม่ได้ในโหมดตัวอย่างนี้");
+  const base64 = await compressImage(file, 500, 0.85);
+  const res = await fetch(API_URL, {
+    method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "uploadProfilePhoto", payload: { teacherId, filename: `${teacherId}.jpg`, mimeType: "image/jpeg", base64 } }),
   });
   const data = await res.json();
   if (!data.ok) throw new Error(data.error || "อัปโหลดไม่สำเร็จ");
@@ -408,11 +469,11 @@ const ROLE_META = {
 };
 
 const NAV = {
-  L0: [["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
-  L1: [["dashboard", "หน้าหลัก", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", CalendarDays]],
-  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays]],
-  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
-  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
+  L0: [["profile", "โปรไฟล์", User], ["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
+  L1: [["profile", "โปรไฟล์", User], ["dashboard", "หน้าหลัก", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
+  L2: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["calendar", "ปฏิทิน", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays], ["budget", "งบของฉัน", DollarSign], ["knowledge", "คลังความรู้", BookOpen]],
+  L3: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
+  L4: [["profile", "โปรไฟล์", User], ["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["calendar", "ปฏิทินกลาง", CalendarClock], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["maintenance", "ซ่อมบำรุง", CalendarClock], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["budget", "งบประมาณ", DollarSign], ["knowledge", "คลังความรู้", BookOpen], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
 };
 
 const canEdit = (role) => role === "L2" || role === "L3";
@@ -486,8 +547,8 @@ function StatCard({ label, value, sub, tone = "navy", icon: Icon }) {
 
 function Modal({ title, onClose, children, wide }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,26,62,0.55)" }}>
-      <div className="w-full flex flex-col" style={{ maxWidth: wide ? 640 : 460, maxHeight: "88vh", background: C.white, border: `1px solid ${C.line}` }}>
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,26,62,0.55)" }}>
+      <div className="w-full flex flex-col" style={{ maxWidth: wide ? 440 : 360, maxHeight: "85dvh", background: C.white, border: `1px solid ${C.line}` }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${C.line}` }}>
           <h3 className="font-bold text-base" style={{ color: C.navy }}>{title}</h3>
           <button onClick={onClose}><X size={18} style={{ color: C.slate }} /></button>
@@ -528,6 +589,10 @@ export default function App() {
   const [staffList, setStaffList] = useState(STAFF);
   const [schedule, setSchedule] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [orgEvents, setOrgEvents] = useState([]);
+  const [repairs, setRepairs] = useState([]);
+  const [pmSchedule, setPmSchedule] = useState([]);
+  const [docs, setDocs] = useState([]);
 
   const [sheetsError, setSheetsError] = useState("");
 
@@ -536,11 +601,12 @@ export default function App() {
     (async () => {
       if (API_URL) {
         try {
-          const { items: si, borrows: sb, damages: sd, staff: ss, schedule: sc, tasks: tk } = await loadFromSheets();
+          const { items: si, borrows: sb, damages: sd, staff: ss, schedule: sc, tasks: tk, orgEvents: oe, repairs: rp, pmSchedule: pm, docs: dc } = await loadFromSheets();
           setItems(si); setBorrows(sb); setDamages(sd);
           if (ss && ss.length) setStaffList(ss);
           setSchedule(sc || []);
           setTasks(tk || []);
+          setOrgEvents(oe || []); setRepairs(rp || []); setPmSchedule(pm || []); setDocs(dc || []);
         } catch (e) { setSheetsError("เชื่อมต่อ Google Sheets ไม่สำเร็จ — กำลังใช้ข้อมูลตัวอย่างในเครื่องแทน"); }
         setLoading(false);
         return;
@@ -567,12 +633,12 @@ export default function App() {
 
   const handleLogin = (id) => {
     const demo = USERS.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
-    if (demo) { setUser(demo); setTab(demo.role === "L0" ? "borrow" : "dashboard"); setLoginErr(""); return; }
+    if (demo) { setUser(demo); setTab("profile"); setLoginErr(""); return; }
     const s = staffList.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
     if (s) {
       const role = ["L0", "L1", "L2", "L3", "L4"].includes(s.level) ? s.level : "L1";
-      setUser({ id: s.id, name: s.name, role, dept: s.dept, title: s.role });
-      setTab(role === "L0" ? "borrow" : "dashboard"); setLoginErr("");
+      setUser({ id: s.id, name: s.name, role, dept: s.dept, title: s.role, photoUrl: s.photoUrl || "" });
+      setTab("profile"); setLoginErr("");
       return;
     }
     setLoginErr("ไม่พบรหัสครู (Teacher ID) นี้ในระบบ — ลองเลือกบัญชีตัวอย่างด้านล่าง");
@@ -630,30 +696,33 @@ export default function App() {
   const nav = NAV[user.role];
 
   return (
-    <div className="w-full min-h-screen flex" style={{ fontFamily: FONT, background: C.paper, color: C.ink }}>
-      <Sidebar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar user={user} />
-        {(!API_URL || sheetsError) && (
-          <div className="px-6 py-2 text-xs flex items-center gap-2" style={{ background: sheetsError ? C.badBg : C.goldSoft, color: sheetsError ? C.crimsonDeep : C.crimsonDeep }}>
-            <AlertTriangle size={13} />
-            {sheetsError || "ยังไม่ได้เชื่อมต่อกับ Google Sheet หลังบ้าน — ตอนนี้ใช้ข้อมูลตัวอย่างในเครื่อง (ดูวิธีเชื่อมต่อใน Code.gs ที่แนบมา)"}
-          </div>
-        )}
-        <main className="flex-1 p-6 overflow-y-auto">
-          {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
-          {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
-          {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
-          {tab === "facility" && <Facility items={items} />}
-          {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
-          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} logAction={logAction} />}
-          {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
-          {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
-          {tab === "analytics" && <Analytics items={items} />}
-          {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
-          {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
-        </main>
-      </div>
+    <div className="app-shell" style={{ fontFamily: FONT, background: C.paper, color: C.ink }}>
+      <TopBar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
+      {(!API_URL || sheetsError) && (
+        <div className="px-4 py-2 text-xs flex items-center gap-2 shrink-0" style={{ background: sheetsError ? C.badBg : C.goldSoft, color: C.crimsonDeep }}>
+          <AlertTriangle size={13} className="shrink-0" />
+          <span>{sheetsError || "ยังไม่ได้เชื่อมต่อกับ Google Sheet หลังบ้าน — ตอนนี้ใช้ข้อมูลตัวอย่างในเครื่อง"}</span>
+        </div>
+      )}
+      <main className="flex-1 p-4 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+        {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
+        {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
+        {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
+        {tab === "facility" && <Facility items={items} />}
+        {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
+        {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={schedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
+        {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} logAction={logAction} />}
+        {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
+        {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
+        {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
+        {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
+        {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
+        {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
+        {tab === "analytics" && <Analytics items={items} />}
+        {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
+        {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
+      </main>
+      <BottomNav nav={nav} tab={tab} setTab={setTab} />
     </div>
   );
 }
@@ -663,15 +732,15 @@ export default function App() {
    ============================================================ */
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   return (
-    <div className="min-h-screen w-full flex" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
-      {/* LEFT — illustration panel, image fills edge-to-edge */}
-      <div className="hidden md:block w-[46%] relative overflow-hidden" style={{ borderRight: "3px solid #C9A15A" }}>
+    <div className="app-shell flex flex-col" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
+      {/* top illustration strip — always visible, sized for the mobile frame instead of a desktop side panel */}
+      <div className="relative shrink-0 overflow-hidden" style={{ height: "34vh", minHeight: 200, borderBottom: "3px solid #C9A15A" }}>
         <img src="https://i.postimg.cc/KzSFyxxH/ACT-SPORT-CENTER-(2).png" alt="ACT Sport Center mascots"
-          className="absolute inset-0 w-full h-full" style={{ objectFit: "cover", objectPosition: "center" }} />
+          className="absolute inset-0 w-full h-full" style={{ objectFit: "cover", objectPosition: "center 20%" }} />
       </div>
 
-      {/* RIGHT — brushed-metal glass login panel */}
-      <div className="flex-1 relative flex items-center justify-center overflow-hidden" style={{
+      {/* brushed-metal glass login panel */}
+      <div className="flex-1 relative overflow-y-auto overflow-x-hidden" style={{
         background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
       }}>
         {/* brushed-metal texture */}
@@ -773,63 +842,89 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 /* ============================================================
    SIDEBAR / TOPBAR
    ============================================================ */
-function Sidebar({ user, nav, tab, setTab, onLogout }) {
+function TopBar({ user, nav, tab, setTab, onLogout }) {
+  const meta = ROLE_META[user.role];
+  const [drawer, setDrawer] = useState(false);
   return (
-    <aside className="w-60 shrink-0 flex flex-col" style={{ background: C.navyDeep }}>
-      <div className="px-5 py-5 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-        <Trophy size={20} style={{ color: C.accent }} />
-        <div>
-          <div className="text-white font-bold text-sm leading-tight">ACT SPORT CENTER</div>
-          <div className="text-[11px]" style={{ color: "#93A0C4" }}>Resource Intelligence</div>
-        </div>
-      </div>
-      <nav className="flex-1 py-4">
-        {nav.map(([key, label, Icon]) => {
-          const active = tab === key;
-          return (
-            <button key={key} onClick={() => setTab(key)}
-              className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-colors"
-              style={{
-                color: active ? C.white : "#AEB8D6",
-                background: active ? "rgba(255,255,255,0.08)" : "transparent",
-                borderLeft: active ? `3px solid ${C.accent}` : "3px solid transparent",
-              }}>
-              <Icon size={16} />{label}
-            </button>
-          );
-        })}
-      </nav>
-      <div className="px-5 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-        <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
-          <LogOut size={13} /> ออกจากระบบ
+    <>
+      <header className="flex items-center justify-between px-3 py-3 shrink-0" style={{ background: C.white, borderBottom: `1px solid ${C.line}`, paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}>
+        <button onClick={() => setDrawer(true)} className="w-9 h-9 flex items-center justify-center shrink-0" aria-label="เมนู">
+          <div className="flex flex-col gap-1">
+            <span className="block w-5 h-0.5" style={{ background: C.ink }} />
+            <span className="block w-5 h-0.5" style={{ background: C.ink }} />
+            <span className="block w-5 h-0.5" style={{ background: C.ink }} />
+          </div>
         </button>
-      </div>
-    </aside>
+        <div className="min-w-0 flex-1 text-center px-2">
+          <div className="text-[11px] font-semibold tracking-wide truncate" style={{ color: meta.tint }}>{meta.dash}</div>
+        </div>
+        <button onClick={() => setTab("profile")} className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden" style={{ background: meta.tint }} aria-label="โปรไฟล์">
+          {user.photoUrl ? <img src={user.photoUrl} alt="" className="w-full h-full" style={{ objectFit: "cover" }} /> : <User size={15} color={C.white} />}
+        </button>
+      </header>
+      {user.role === "L4" && (
+        <div className="px-3 py-1.5 shrink-0" style={{ background: C.goldSoft }}>
+          <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> โหมดดูอย่างเดียว</Pill>
+        </div>
+      )}
+      {drawer && (
+        <div className="absolute inset-0 z-50 flex" onClick={() => setDrawer(false)}>
+          <div className="w-[78%] max-w-[320px] h-full flex flex-col" style={{ background: C.navyDeep }} onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-5 flex items-center gap-2 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", paddingTop: "calc(1.25rem + env(safe-area-inset-top))" }}>
+              <Trophy size={20} style={{ color: C.accent }} />
+              <div>
+                <div className="text-white font-bold text-sm leading-tight">ACT SPORT CENTER</div>
+                <div className="text-[11px]" style={{ color: "#93A0C4" }}>Resource Intelligence</div>
+              </div>
+            </div>
+            <nav className="flex-1 py-3 overflow-y-auto">
+              {nav.map(([key, label, Icon]) => {
+                const active = tab === key;
+                return (
+                  <button key={key} onClick={() => { setTab(key); setDrawer(false); }}
+                    className="w-full flex items-center gap-3 px-5 py-3 text-sm text-left transition-colors"
+                    style={{
+                      color: active ? C.white : "#AEB8D6",
+                      background: active ? "rgba(255,255,255,0.08)" : "transparent",
+                      borderLeft: active ? `3px solid ${C.accent}` : "3px solid transparent",
+                    }}>
+                    <Icon size={16} />{label}
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="px-5 py-4 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+              <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
+                <LogOut size={13} /> ออกจากระบบ
+              </button>
+            </div>
+          </div>
+          <div className="flex-1" style={{ background: "rgba(0,0,0,0.5)" }} />
+        </div>
+      )}
+    </>
   );
 }
 
-function TopBar({ user }) {
-  const meta = ROLE_META[user.role];
+function BottomNav({ nav, tab, setTab }) {
+  const items = nav.slice(0, 5); // primary items only — everything else lives in the drawer
   return (
-    <header className="flex items-center justify-between px-6 py-4" style={{ background: C.white, borderBottom: `1px solid ${C.line}` }}>
-      <div>
-        <div className="text-xs font-semibold tracking-wide" style={{ color: meta.tint }}>{meta.dash}</div>
-      </div>
-      <div className="flex items-center gap-4">
-        {user.role === "L4" && (
-          <Pill fg={C.gold} bg={C.goldSoft}><Eye size={12} /> โหมดดูอย่างเดียว</Pill>
-        )}
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 flex items-center justify-center" style={{ background: meta.tint, color: C.white }}>
-            <User size={15} />
-          </div>
-          <div className="text-right">
-            <div className="text-sm font-medium leading-tight" style={{ color: C.ink }}>{user.name}</div>
-            <div className="text-xs" style={{ color: C.mute }}>{user.title}</div>
-          </div>
-        </div>
-      </div>
-    </header>
+    <nav className="shrink-0 flex items-stretch" style={{
+      background: C.white, borderTop: `1px solid ${C.line}`,
+      paddingBottom: "env(safe-area-inset-bottom)",
+    }}>
+      {items.map(([key, label, Icon]) => {
+        const active = tab === key;
+        return (
+          <button key={key} onClick={() => setTab(key)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2"
+            style={{ color: active ? C.crimson : C.mute }}>
+            <Icon size={18} strokeWidth={active ? 2.4 : 2} />
+            <span className="text-[10px] leading-tight truncate max-w-[64px]" style={{ fontWeight: active ? 600 : 400 }}>{label}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -885,7 +980,7 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
     return (
       <div>
         <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี, ${user.name}`} sub="นี่คือสิ่งที่คุณต้องทำวันนี้" />
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <StatCard label="เกินกำหนด" value={taskCounts.overdue} icon={AlertTriangle} tone="crimson" />
           <StatCard label="ครบกำหนดวันนี้" value={taskCounts.today} icon={Clock} tone="gold" />
           <StatCard label="กำลังจะถึง" value={taskCounts.upcoming} icon={CalendarDays} tone="navy" />
@@ -901,12 +996,12 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <StatCard label="กำลังยืมอยู่" value={mine.filter((b) => b.status === "borrowed").length} icon={ArrowLeftRight} tone="navy" />
           <StatCard label="เกินกำหนดคืน" value={mine.filter((b) => b.status === "borrowed" && new Date(b.due) < new Date("2026-09-15")).length} icon={AlertTriangle} tone="crimson" />
           <StatCard label="คืนแล้วทั้งหมด" value={mine.filter((b) => b.status === "returned").length} icon={CheckCircle2} tone="ok" />
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <QuickAction icon={ClipboardList} title="งานของฉันทั้งหมด" desc="ดูรายการงานที่ได้รับมอบหมายทั้งหมด" onClick={() => setTab("tasks")} />
           <QuickAction icon={ArrowLeftRight} title="ยืมอุปกรณ์" desc="ค้นหาอุปกรณ์ที่พร้อมใช้และส่งคำขอยืม" onClick={() => setTab("borrow")} />
           <QuickAction icon={Wrench} title="แจ้งของชำรุด" desc="รายงานอุปกรณ์ที่พบว่าชำรุดหรือใช้งานไม่ได้" onClick={() => setTab("damage")} />
@@ -918,7 +1013,7 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
   return (
     <div>
       <SectionHead eyebrow={ROLE_META[user.role].dash} title="ภาพรวมทรัพยากรศูนย์กีฬา" sub="อัปเดตแบบเรียลไทม์จากทะเบียนครุภัณฑ์และรายการยืม–คืน" />
-      <div className="grid grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <StatCard label="รายการทั้งหมด" value={k.total} tone="navy" icon={Package} />
         <StatCard label="ใช้งานได้ (ชิ้น)" value={k.normal.toLocaleString()} tone="ok" icon={CheckCircle2} />
         <StatCard label="ชำรุด (ชิ้น)" value={k.damaged.toLocaleString()} tone="crimson" icon={Wrench} />
@@ -940,7 +1035,7 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="col-span-2 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold" style={{ color: C.navy }}>สุขภาพทรัพยากรแยกตามหมวด (Top 8 ชำรุดสูงสุด)</h3>
@@ -1084,7 +1179,7 @@ function Inventory({ user, items, setItems, logAction }) {
         </select>
       </div>
 
-      <div style={{ border: `1px solid ${C.line}`, background: C.white }}>
+      <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: C.navy, color: C.white }}>
@@ -1224,8 +1319,8 @@ function ItemImagePopup({ item, onClose, editable, onUploaded }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,10,10,0.65)" }} onClick={onClose}>
-      <div className="w-full flex flex-col" style={{ maxWidth: 380, background: C.white, border: `1px solid ${C.line}` }} onClick={(e) => e.stopPropagation()}>
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,10,10,0.65)" }} onClick={onClose}>
+      <div className="w-full flex flex-col" style={{ maxWidth: 340, background: C.white, border: `1px solid ${C.line}` }} onClick={(e) => e.stopPropagation()}>
         <div className="relative flex items-center justify-center overflow-hidden" style={{ height: 200, background: item.imageUrl ? "#000" : `linear-gradient(150deg, ${C.navyDeep}, ${C.navy})` }}>
           <button onClick={onClose} className="absolute top-2 right-2 z-10"><X size={18} color={C.white} /></button>
           {item.imageUrl ? (
@@ -1303,7 +1398,7 @@ function Facility({ items }) {
   return (
     <div>
       <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="สรุปทรัพยากรแยกตามสถานที่จัดเก็บ / พื้นที่ใช้งาน" />
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {byLoc.map((l) => (
           <div key={l.name} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${l.damaged > l.ok * 0.3 && l.ok > 0 ? C.crimson : C.navy}` }}>
             <div className="flex items-center gap-2 mb-2">
@@ -1380,7 +1475,7 @@ function StaffDirectory({ staff, setStaffList, user, logAction }) {
           {depts.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {filtered.map((s) => (
           <div key={s.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
             <div className="flex items-center justify-between mb-2">
@@ -1551,7 +1646,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, logAction }) {
       {manager && workload.length > 0 && (
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ภาระงานรวมรายบุคคล (Workload)</h3>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {workload.map((w) => (
               <div key={w.teacher} className="flex items-center justify-between px-3 py-2" style={{ border: `1px solid ${C.line}` }}>
                 <span className="text-sm truncate" style={{ color: C.ink }}>{w.teacher}</span>
@@ -1684,7 +1779,7 @@ function Borrowing({ user, items, setItems, borrows, setBorrows, logAction }) {
       <SectionHead eyebrow="BORROWING" title="ยืม–คืนอุปกรณ์" sub="Request → Approved → Borrowed → Return"
         right={<Btn onClick={() => setShowNew(true)} icon={Plus}>บันทึกการยืมใหม่</Btn>} />
 
-      <div style={{ border: `1px solid ${C.line}`, background: C.white }}>
+      <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: C.navy, color: C.white }}>
@@ -1805,7 +1900,7 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
           ยังไม่มีรายการแจ้งชำรุดใหม่ในรอบนี้ — ใช้ปุ่ม "แจ้งของชำรุด" เพื่อเริ่มบันทึก
         </div>
       ) : (
-        <div style={{ border: `1px solid ${C.line}`, background: C.white }}>
+        <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: C.navy, color: C.white }}>
@@ -1902,7 +1997,7 @@ function Analytics({ items }) {
   return (
     <div>
       <SectionHead eyebrow="ANALYTICS" title="วิเคราะห์ทรัพยากร" sub="Resource Health · Damage Rate · High-risk Resources" />
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-2" style={{ color: C.navy }}>สุขภาพทรัพยากรรวม</h3>
           <ResponsiveContainer width="100%" height={200}>
@@ -1981,7 +2076,7 @@ function Reports({ items, borrows, damages }) {
   return (
     <div>
       <SectionHead eyebrow="REPORTS" title="รายงาน" sub="เลือกประเภทรายงานและส่งออกเป็นไฟล์ CSV" />
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div className="col-span-1 space-y-1">
           {REPORT_TYPES.map((t) => (
             <button key={t} onClick={() => setType(t)} className="w-full text-left px-3 py-2 text-sm"
@@ -1993,7 +2088,7 @@ function Reports({ items, borrows, damages }) {
         <div className="col-span-3 p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="font-bold text-base mb-1" style={{ color: C.navy }}>{type}</h3>
           <p className="text-sm mb-4" style={{ color: C.slate }}>ข้อมูลคำนวณจากทะเบียนครุภัณฑ์และรายการยืม–คืนล่าสุดแบบเรียลไทม์</p>
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <StatCard label="รายการในรายงาน" value={items.length} tone="navy" />
             <StatCard label="รอบข้อมูล" value="ปีการศึกษา 2568" tone="gold" />
             <StatCard label="อัปเดตล่าสุด" value="15 ก.ย. 2569" tone="ok" />
@@ -2039,6 +2134,7 @@ function ManagementActions({ user, items, setItems, actionsLog, logAction }) {
 
       <div className="p-4 mb-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
         <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>รายการที่ระบบแนะนำให้ดำเนินการ</h3>
+        <div className="table-scroll">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ color: C.slate }}>
@@ -2063,6 +2159,7 @@ function ManagementActions({ user, items, setItems, actionsLog, logAction }) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
@@ -2180,6 +2277,7 @@ function WorkManagement({ user, tasks, setTasks, staffList, items, createTask, p
       {!personal && workload.length > 0 && (
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><Users size={15} /> ภาระงานทีม (Team Workload)</h3>
+          <div className="table-scroll">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ color: C.slate }}>
@@ -2203,6 +2301,7 @@ function WorkManagement({ user, tasks, setTasks, staffList, items, createTask, p
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -2330,5 +2429,808 @@ function TaskDetailModal({ t, user, manager, readOnly, staffList, onClose, patch
         </>
       )}
     </Modal>
+  );
+}
+
+/* ============================================================
+   CALENDAR — combines My Tasks, ตารางสอน (schedule), org-wide
+   activities, and preventive-maintenance reminders into one view.
+   ============================================================ */
+const DAY_TO_WEEKDAY = { "อาทิตย์": 0, "จันทร์": 1, "อังคาร": 2, "พุธ": 3, "พฤหัสบดี": 4, "ศุกร์": 5, "เสาร์": 6 };
+const CAL_LAYERS = [
+  { key: "tasks", label: "งานของฉัน (My Tasks)", color: C.crimson },
+  { key: "schedule", label: "ตารางใช้สนาม/ศูนย์กีฬา", color: C.navy },
+  { key: "org", label: "กิจกรรมฝ่ายกิจกรรม/องค์กร", color: "#B8860B" },
+  { key: "pm", label: "นัดซ่อมบำรุงล่วงหน้า", color: "#C2660D" },
+];
+
+function combineDate(dateStr, timeStr) {
+  const [y, m, d] = (dateStr || "").split("-").map(Number);
+  if (!y) return null;
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  if (timeStr) {
+    const [hh, mm] = timeStr.split(":").map(Number);
+    dt.setHours(hh || 0, mm || 0);
+  }
+  return dt;
+}
+
+function buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly, userName }) {
+  const events = [];
+  const myTasks = mineOnly ? tasks.filter((t) => t.assignee === userName || t.createdBy === userName) : tasks;
+  myTasks.forEach((t) => {
+    if (!t.dueDate) return;
+    const start = combineDate(t.dueDate, t.dueTime);
+    if (!start) return;
+    const end = t.dueTime ? new Date(start.getTime() + 60 * 60 * 1000) : start;
+    events.push({ id: `T-${t.id}`, title: `📋 ${t.title}`, start, end, allDay: !t.dueTime, layer: "tasks", raw: t });
+  });
+
+  // schedule repeats weekly — project onto -1..+6 weeks from today for a usable calendar window
+  const base = new Date(2026, 8, 17); // 2026-09-17, Thursday — matches TODAY_ISO
+  const monday = new Date(base); monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
+  for (let w = -1; w <= 6; w++) {
+    schedule.forEach((s) => {
+      const wd = DAY_TO_WEEKDAY[s.day];
+      if (wd === undefined) return;
+      const d = new Date(monday); d.setDate(monday.getDate() + w * 7 + ((wd + 6) % 7));
+      const start = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.start);
+      const end = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.end);
+      if (!start) return;
+      events.push({ id: `S-${s.id}-${w}`, title: `🏟️ ${s.subject} — ${s.teacher}`, start, end: end || start, allDay: false, layer: "schedule", raw: s });
+    });
+  }
+
+  orgEvents.forEach((e) => {
+    const start = combineDate(e.start);
+    const end = combineDate(e.end) || start;
+    if (!start) return;
+    events.push({ id: `O-${e.id}`, title: `🎪 ${e.title}`, start, end, allDay: true, layer: "org", raw: e });
+  });
+
+  pmSchedule.forEach((p) => {
+    const start = combineDate(p.nextDate);
+    if (!start) return;
+    events.push({ id: `P-${p.id}`, title: `🔧 นัดซ่อม: ${p.refName}`, start, end: start, allDay: true, layer: "pm", raw: p });
+  });
+
+  return events;
+}
+
+function CalendarView({ user, tasks, schedule, orgEvents, pmSchedule, setOrgEvents, setTab, logAction }) {
+  const [visible, setVisible] = useState({ tasks: true, schedule: true, org: true, pm: true });
+  const [view, setView] = useState("month");
+  const [selected, setSelected] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const mineOnly = user.role === "L1" || user.role === "L2";
+  const manager = canManage(user.role);
+
+  const allEvents = useMemo(
+    () => buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly, userName: user.name }),
+    [tasks, schedule, orgEvents, pmSchedule, mineOnly, user.name]
+  );
+  const events = allEvents.filter((e) => visible[e.layer]);
+
+  const addEvent = async (form) => {
+    const r = await postToSheetsAwait("addOrgEvent", form);
+    setOrgEvents((prev) => [...prev, { id: r.id, ...form }]);
+    logAction(`เพิ่มกิจกรรมองค์กร: ${form.title}`);
+    setShowNew(false);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="CALENDAR" title="ปฏิทินอัจฉริยะ" sub="รวมงานส่วนตัว ตารางใช้สนาม กิจกรรมองค์กร และนัดซ่อมบำรุงไว้ในที่เดียว"
+        right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มกิจกรรมองค์กร</Btn>} />
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        {CAL_LAYERS.map((l) => (
+          <label key={l.key} className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: C.slate }}>
+            <input type="checkbox" checked={visible[l.key]} onChange={() => setVisible((v) => ({ ...v, [l.key]: !v[l.key] }))} />
+            <span className="w-2.5 h-2.5 inline-block" style={{ background: l.color }} /> {l.label}
+          </label>
+        ))}
+      </div>
+      <div className="p-3" style={{ background: C.white, border: `1px solid ${C.line}`, height: 640 }}>
+        <BigCalendar
+          localizer={calendarLocalizer}
+          events={events}
+          startAccessor="start"
+          endAccessor="end"
+          view={view}
+          onView={setView}
+          views={["month", "week", "day", "agenda"]}
+          style={{ height: "100%", fontFamily: FONT }}
+          onSelectEvent={(e) => setSelected(e)}
+          eventPropGetter={(e) => ({ style: { background: CAL_LAYERS.find((l) => l.key === e.layer)?.color || C.navy, border: "none", fontSize: 12 } })}
+          messages={{ month: "เดือน", week: "สัปดาห์", day: "วัน", agenda: "รายการ", today: "วันนี้", previous: "ก่อนหน้า", next: "ถัดไป", noEventsInRange: "ไม่มีรายการในช่วงนี้" }}
+        />
+      </div>
+      {selected && (
+        <Modal title={selected.title} onClose={() => setSelected(null)}>
+          <div className="text-sm space-y-1.5" style={{ color: C.ink }}>
+            <div>เวลา: {selected.allDay ? "ทั้งวัน" : `${selected.start.toLocaleString("th-TH")} – ${selected.end.toLocaleTimeString("th-TH")}`}</div>
+            {selected.layer === "tasks" && (
+              <>
+                <div>ผู้รับผิดชอบ: {selected.raw.assignee || "-"}</div>
+                <div>สถานที่: {selected.raw.location || "-"}</div>
+                <button onClick={() => setTab("tasks")} className="text-xs underline mt-2" style={{ color: C.navy }}>ไปที่หน้างาน →</button>
+              </>
+            )}
+            {selected.layer === "schedule" && (<><div>สถานที่: {selected.raw.loc}</div><div>กลุ่ม/ระดับชั้น: {selected.raw.group || "-"}</div></>)}
+            {selected.layer === "org" && (<><div>หน่วยงาน: {selected.raw.dept}</div><div>สถานที่: {selected.raw.loc || "-"}</div><div>{selected.raw.description}</div></>)}
+            {selected.layer === "pm" && (<><div>รอบซ่อม: {selected.raw.cycle}</div><div>ผู้รับผิดชอบ: {selected.raw.owner || "-"}</div><button onClick={() => setTab("maintenance")} className="text-xs underline mt-2" style={{ color: C.navy }}>ไปที่หน้าซ่อมบำรุง →</button></>)}
+          </div>
+        </Modal>
+      )}
+      {showNew && (
+        <Modal title="เพิ่มกิจกรรมองค์กร" onClose={() => setShowNew(false)}>
+          <OrgEventForm onSubmit={addEvent} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function OrgEventForm({ onSubmit }) {
+  const [form, setForm] = useState({ title: "", start: "", end: "", allDay: true, dept: "ฝ่ายกิจกรรม", owner: "", loc: "", description: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.title.trim() && form.start;
+  return (
+    <div>
+      <Field label="ชื่องาน *"><input value={form.title} onChange={set("title")} style={inputStyle} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="วันที่เริ่ม *"><input type="date" value={form.start} onChange={set("start")} style={inputStyle} /></Field>
+        <Field label="วันที่สิ้นสุด"><input type="date" value={form.end} onChange={set("end")} style={inputStyle} /></Field>
+      </div>
+      <Field label="หน่วยงานเจ้าของ"><input value={form.dept} onChange={set("dept")} style={inputStyle} /></Field>
+      <Field label="ผู้รับผิดชอบ"><input value={form.owner} onChange={set("owner")} style={inputStyle} /></Field>
+      <Field label="สถานที่"><input value={form.loc} onChange={set("loc")} style={inputStyle} /></Field>
+      <Field label="รายละเอียด"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field>
+      <div className="flex justify-end mt-2">
+        <Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   MAINTENANCE TRACKING — repair history log + preventive schedule
+   ============================================================ */
+function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSchedule, staffList, logAction }) {
+  const manager = canEdit(user.role) || canManage(user.role);
+  const [showRepair, setShowRepair] = useState(false);
+  const [showPM, setShowPM] = useState(false);
+
+  const addRepair = async (form) => {
+    const r = await postToSheetsAwait("addRepair", form);
+    setRepairs((prev) => [{ id: r.id, ...form }, ...prev]);
+    logAction(`บันทึกประวัติซ่อม: ${form.refName} (${form.cost.toLocaleString()} บาท)`);
+    setShowRepair(false);
+  };
+  const addPM = async (form) => {
+    const r = await postToSheetsAwait("addPM", form);
+    setPmSchedule((prev) => [{ id: r.id, ...form }, ...prev]);
+    logAction(`ตั้งนัดซ่อมล่วงหน้า: ${form.refName} วันที่ ${form.nextDate}`);
+    setShowPM(false);
+  };
+  const totalCost = repairs.reduce((s, r) => s + r.cost, 0);
+
+  return (
+    <div>
+      <SectionHead eyebrow="MAINTENANCE" title="ซ่อมบำรุง" sub={`ประวัติซ่อม ${repairs.length} ครั้ง · รวม ${totalCost.toLocaleString()} บาท`}
+        right={manager && (
+          <div className="flex gap-2">
+            <Btn variant="ghost" onClick={() => setShowPM(true)} icon={CalendarClock}>ตั้งนัดซ่อมล่วงหน้า</Btn>
+            <Btn onClick={() => setShowRepair(true)} icon={Plus}>บันทึกประวัติซ่อม</Btn>
+          </div>
+        )} />
+
+      <div className="mb-4">
+        <h3 className="text-sm font-bold mb-2" style={{ color: C.navy }}>แผนซ่อมล่วงหน้า (Preventive Maintenance)</h3>
+        {pmSchedule.length === 0 ? (
+          <div className="p-4 text-center text-sm mb-4" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีนัดซ่อมล่วงหน้า</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {pmSchedule.map((p) => (
+              <div key={p.id} className="p-3" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid #C2660D` }}>
+                <div className="text-sm font-semibold" style={{ color: C.ink }}>{p.refName}</div>
+                <div className="text-xs mt-1" style={{ color: C.slate }}>รอบ: {p.cycle || "-"} · นัดถัดไป: <b>{p.nextDate}</b></div>
+                <div className="text-xs" style={{ color: C.mute }}>ผู้รับผิดชอบ: {p.owner || "-"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <h3 className="text-sm font-bold mb-2" style={{ color: C.navy }}>ประวัติการซ่อม</h3>
+      {repairs.length === 0 ? (
+        <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีประวัติการซ่อมในระบบ</div>
+      ) : (
+        <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: C.navy, color: C.white }}>
+                {["วันที่ซ่อม", "อุปกรณ์/สถานที่", "รายละเอียด", "ค่าใช้จ่าย", "ผู้รับผิดชอบ", "ร้าน/ช่าง"].map((h) => <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {repairs.map((r) => (
+                <tr key={r.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <td className="px-3 py-2 text-xs">{r.date}</td>
+                  <td className="px-3 py-2 text-sm">{r.refName}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{r.description}</td>
+                  <td className="px-3 py-2 text-xs font-mono">{r.cost.toLocaleString()} ฿</td>
+                  <td className="px-3 py-2 text-xs">{r.owner}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: C.mute }}>{r.vendor || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showRepair && (
+        <Modal title="บันทึกประวัติซ่อม" onClose={() => setShowRepair(false)} wide>
+          <RepairForm items={items} staffList={staffList} onSubmit={addRepair} />
+        </Modal>
+      )}
+      {showPM && (
+        <Modal title="ตั้งนัดซ่อมล่วงหน้า" onClose={() => setShowPM(false)} wide>
+          <PMForm items={items} staffList={staffList} onSubmit={addPM} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function RepairForm({ items, staffList, onSubmit }) {
+  const [form, setForm] = useState({ ref: "", refName: "", date: "2026-09-17", description: "", cost: 0, owner: "", vendor: "", receiptUrl: "", status: "เสร็จสิ้น" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const pickItem = (e) => { const it = items.find((i) => i.code === e.target.value); setForm((f) => ({ ...f, ref: it?.code || "", refName: it ? `${it.name} (${it.code})` : "" })); };
+  const valid = form.refName.trim() && form.date;
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <Field label="อุปกรณ์ (เลือกจากทะเบียน)">
+        <select onChange={pickItem} style={inputStyle}><option value="">— เลือก —</option>{items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}</select>
+      </Field>
+      <Field label="หรือพิมพ์ชื่ออุปกรณ์/สถานที่เอง *"><input value={form.refName} onChange={set("refName")} style={inputStyle} /></Field>
+      <Field label="วันที่ซ่อม"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
+      <Field label="ค่าใช้จ่าย (บาท)"><input type="number" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: Number(e.target.value) }))} style={inputStyle} /></Field>
+      <Field label="ผู้รับผิดชอบ">
+        <select value={form.owner} onChange={set("owner")} style={inputStyle}><option value="">— เลือก —</option>{staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
+      </Field>
+      <Field label="ร้าน/ช่าง"><input value={form.vendor} onChange={set("vendor")} style={inputStyle} /></Field>
+      <div className="col-span-2"><Field label="รายละเอียด"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field></div>
+      <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn></div>
+    </div>
+  );
+}
+
+function PMForm({ items, staffList, onSubmit }) {
+  const [form, setForm] = useState({ ref: "", refName: "", cycle: "ทุก 6 เดือน", nextDate: "", owner: "", note: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const pickItem = (e) => { const it = items.find((i) => i.code === e.target.value); setForm((f) => ({ ...f, ref: it?.code || "", refName: it ? `${it.name} (${it.code})` : "" })); };
+  const valid = form.refName.trim() && form.nextDate;
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <Field label="อุปกรณ์ (เลือกจากทะเบียน)">
+        <select onChange={pickItem} style={inputStyle}><option value="">— เลือก —</option>{items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}</select>
+      </Field>
+      <Field label="หรือพิมพ์ชื่ออุปกรณ์/สถานที่เอง *"><input value={form.refName} onChange={set("refName")} style={inputStyle} /></Field>
+      <Field label="รอบซ่อม"><input value={form.cycle} onChange={set("cycle")} style={inputStyle} placeholder="เช่น ทุก 6 เดือน" /></Field>
+      <Field label="วันนัดถัดไป *"><input type="date" value={form.nextDate} onChange={set("nextDate")} style={inputStyle} /></Field>
+      <Field label="ผู้รับผิดชอบ">
+        <select value={form.owner} onChange={set("owner")} style={inputStyle}><option value="">— เลือก —</option>{staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
+      </Field>
+      <div className="col-span-2"><Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field></div>
+      <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึกนัดหมาย — จะขึ้นบนปฏิทินกลางอัตโนมัติ</Btn></div>
+    </div>
+  );
+}
+
+/* ============================================================
+   KNOWLEDGE BASE — documents/manuals/policies, files live in Drive
+   ============================================================ */
+const DOC_CATEGORIES = ["คู่มือการใช้งาน", "กฎระเบียบการยืมอุปกรณ์", "ขั้นตอนแจ้งซ่อม", "ขั้นตอนเบิกจ่าย", "อื่นๆ"];
+
+function docToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result.split(",")[1]);
+    reader.onerror = () => reject(new Error("อ่านไฟล์ไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function KnowledgeBase({ user, docs, setDocs, logAction }) {
+  const manager = canManage(user.role);
+  const [cat, setCat] = useState("ALL");
+  const [q, setQ] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const filtered = docs.filter((d) => (cat === "ALL" || d.category === cat) && d.title.toLowerCase().includes(q.toLowerCase()));
+
+  const upload = async ({ title, category, file }) => {
+    if (!API_URL) { alert("ยังไม่ได้เชื่อมต่อ Google Sheets backend"); return; }
+    const base64 = await docToBase64(file);
+    const r = await postToSheetsAwait("uploadDoc", { title, category, filename: file.name, mimeType: file.type, base64, uploadedBy: user.name });
+    setDocs((prev) => [{ id: r.id, title, category, url: r.url, uploadedBy: user.name, updatedDate: "2026-09-17", version: "1" }, ...prev]);
+    logAction(`อัปโหลดเอกสาร: ${title}`);
+    setShowNew(false);
+  };
+  const del = async (d) => {
+    await postToSheetsAwait("deleteDoc", { id: d.id });
+    setDocs((prev) => prev.filter((x) => x.id !== d.id));
+    logAction(`ลบเอกสาร: ${d.title}`);
+    setConfirmDel(null);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="KNOWLEDGE BASE" title="คลังความรู้และแนวปฏิบัติ" sub="คู่มือ กฎระเบียบ ขั้นตอนการทำงานของศูนย์กีฬา"
+        right={manager && <Btn onClick={() => setShowNew(true)} icon={Upload}>อัปโหลดเอกสาร</Btn>} />
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative flex-1 max-w-sm">
+          <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาเอกสาร..." style={{ ...inputStyle, paddingLeft: 32 }} />
+        </div>
+        <select value={cat} onChange={(e) => setCat(e.target.value)} style={{ ...inputStyle, width: 220 }}>
+          <option value="ALL">ทุกหมวด</option>
+          {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ยังไม่มีเอกสารในระบบ</div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {filtered.map((d) => (
+            <div key={d.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <div className="flex items-start gap-3 mb-2">
+                <BookOpen size={18} style={{ color: C.navy, marginTop: 2 }} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold truncate" style={{ color: C.ink }}>{d.title}</div>
+                  <div className="text-xs" style={{ color: C.mute }}>{d.category} · v{d.version}</div>
+                </div>
+              </div>
+              <div className="text-xs mb-3" style={{ color: C.slate }}>อัปโหลดโดย {d.uploadedBy} · {d.updatedDate}</div>
+              <div className="flex items-center justify-between">
+                <a href={d.url} target="_blank" rel="noreferrer" className="text-xs font-semibold flex items-center gap-1" style={{ color: C.navy }}>เปิดเอกสาร <ExternalLink size={12} /></a>
+                {manager && <button onClick={() => setConfirmDel(d)}><X size={14} style={{ color: C.crimson }} /></button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {showNew && (
+        <Modal title="อัปโหลดเอกสาร" onClose={() => setShowNew(false)}>
+          <DocUploadForm onSubmit={upload} />
+        </Modal>
+      )}
+      {confirmDel && (
+        <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
+          <p className="text-sm mb-4" style={{ color: C.ink }}>ลบเอกสาร <b>{confirmDel.title}</b> ใช่หรือไม่?</p>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => del(confirmDel)} icon={X}>ยืนยันลบ</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function DocUploadForm({ onSubmit }) {
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState(DOC_CATEGORIES[0]);
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => { setBusy(true); try { await onSubmit({ title, category, file }); } finally { setBusy(false); } };
+  return (
+    <div>
+      <Field label="ชื่อเอกสาร *"><input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} /></Field>
+      <Field label="หมวดหมู่">
+        <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>{DOC_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+      </Field>
+      <Field label="ไฟล์ *"><input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={inputStyle} /></Field>
+      <div className="flex justify-end mt-2">
+        <Btn onClick={submit} disabled={!title.trim() || !file || busy}>{busy ? "กำลังอัปโหลด..." : "อัปโหลด"}</Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   BUDGET — role-filtered on the SERVER (not just hidden in UI).
+   L1/L2 only ever receive their own project(s); L3 manages
+   everything; L4 sees everything read-only. See _budgetData in
+   Code.gs — this is the one module that is NOT in the public
+   doGet payload.
+   ============================================================ */
+function BudgetView({ user, staffList, logAction }) {
+  const [data, setData] = useState(null);
+  const [loadingB, setLoadingB] = useState(true);
+  const [err, setErr] = useState("");
+  const [showNewBudget, setShowNewBudget] = useState(false);
+  const [showIncome, setShowIncome] = useState(false);
+  const [expenseFor, setExpenseFor] = useState(null);
+  const manager = canManage(user.role);
+  const readOnly = user.role === "L4";
+
+  const reload = useCallback(() => {
+    setLoadingB(true);
+    loadBudgetData(user.id).then((d) => { setData(d); setErr(""); }).catch((e) => setErr(e.message)).finally(() => setLoadingB(false));
+  }, [user.id]);
+  useEffect(() => { reload(); }, [reload]);
+
+  if (loadingB) return <div className="p-8 text-center text-sm" style={{ color: C.mute }}>กำลังโหลดข้อมูลงบประมาณ...</div>;
+  if (!API_URL) return <div className="p-8 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>โมดูลงบประมาณต้องเชื่อมต่อ Google Sheets backend ก่อนใช้งาน</div>;
+  if (err) return <div className="p-6 text-sm" style={{ color: C.crimson, background: C.badBg, border: `1px solid #E9B9C1` }}>{err}</div>;
+
+  const spentFor = (budgetId) => data.expenses.filter((e) => e.budgetId === budgetId && e.approvalStatus !== "ปฏิเสธ").reduce((s, e) => s + e.amount, 0);
+  const totalIncome = data.income.reduce((s, i) => s + i.amount, 0);
+  const totalBudget = data.budgets.reduce((s, b) => s + b.amount, 0);
+  const totalSpent = data.budgets.reduce((s, b) => s + spentFor(b.id), 0);
+
+  const submitBudget = async (form) => {
+    const r = await postToSheetsAwait("addBudget", { teacherId: user.id, ...form });
+    if (r.error) { alert(r.error); return; }
+    logAction(`สร้างโครงการงบประมาณ: ${form.name}`);
+    setShowNewBudget(false); reload();
+  };
+  const submitIncome = async (form) => {
+    const r = await postToSheetsAwait("addIncome", { teacherId: user.id, ...form });
+    if (r.error) { alert(r.error); return; }
+    logAction(`บันทึกรายรับ: ${form.type} ${form.amount} บาท`);
+    setShowIncome(false); reload();
+  };
+  const submitExpense = async (form) => {
+    const r = await postToSheetsAwait("addExpense", { teacherId: user.id, budgetId: expenseFor.id, ...form });
+    if (r.error) { alert(r.error); return; }
+    logAction(`เบิกจ่าย: ${form.item} ${form.amount} บาท (${expenseFor.name})`);
+    setExpenseFor(null); reload();
+  };
+  const approveExpense = async (e, status) => {
+    const r = await postToSheetsAwait("updateExpenseStatus", { teacherId: user.id, id: e.id, status });
+    if (r.error) { alert(r.error); return; }
+    logAction(`${status} รายจ่าย: ${e.item}`);
+    reload();
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="BUDGET" title={data.isManager ? "ภาพรวมงบประมาณศูนย์กีฬา" : "งบประมาณของฉัน"}
+        sub={data.isManager ? "เห็นทุกโครงการ — เฉพาะ L3/L4 เท่านั้นที่เข้าถึงมุมมองนี้ได้ ข้อมูลกรองจากฝั่งเซิร์ฟเวอร์" : `เห็นเฉพาะโครงการที่คุณรับผิดชอบ (${data.budgets.length} โครงการ)`}
+        right={manager && (
+          <div className="flex gap-2">
+            <Btn variant="ghost" onClick={() => setShowIncome(true)} icon={Plus}>บันทึกรายรับ</Btn>
+            <Btn onClick={() => setShowNewBudget(true)} icon={Plus}>สร้างโครงการงบประมาณ</Btn>
+          </div>
+        )} />
+
+      {data.isManager && (
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <StatCard label="รายรับรวม" value={`${totalIncome.toLocaleString()} ฿`} tone="ok" icon={DollarSign} />
+          <StatCard label="งบที่จัดสรรรวม" value={`${totalBudget.toLocaleString()} ฿`} tone="navy" icon={ClipboardList} />
+          <StatCard label="เบิกจ่ายไปแล้ว" value={`${totalSpent.toLocaleString()} ฿`} tone="crimson" icon={TrendingUp} />
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {data.budgets.length === 0 && <div className="col-span-2 p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>{data.isManager ? "ยังไม่มีโครงการงบประมาณในระบบ" : "คุณยังไม่ได้รับมอบหมายงบประมาณ/โครงการใด"}</div>}
+        {data.budgets.map((b) => {
+          const spent = spentFor(b.id);
+          const remain = b.amount - spent;
+          const pct = b.amount ? Math.min(100, Math.round((spent / b.amount) * 100)) : 0;
+          const myExpenses = data.expenses.filter((e) => e.budgetId === b.id);
+          return (
+            <div key={b.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-sm font-bold" style={{ color: C.ink }}>{b.name}</div>
+                <Pill fg={remain >= 0 ? C.ok : C.bad} bg={remain >= 0 ? C.okBg : C.badBg}>{b.status}</Pill>
+              </div>
+              <div className="text-xs mb-2" style={{ color: C.mute }}>{b.dept} · ผู้รับผิดชอบ: {b.owner} · {b.startDate}–{b.endDate}</div>
+              <div className="h-2 w-full mb-1" style={{ background: C.line }}>
+                <div className="h-2" style={{ width: `${pct}%`, background: pct >= 90 ? C.crimson : C.navy }} />
+              </div>
+              <div className="flex items-center justify-between text-xs mb-3" style={{ color: C.slate }}>
+                <span>ใช้ไป {spent.toLocaleString()} / {b.amount.toLocaleString()} ฿</span>
+                <span style={{ color: remain >= 0 ? C.ok : C.crimson, fontWeight: 600 }}>คงเหลือ {remain.toLocaleString()} ฿</span>
+              </div>
+              {myExpenses.length > 0 && (
+                <div className="space-y-1 mb-3 max-h-28 overflow-y-auto">
+                  {myExpenses.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between text-xs px-2 py-1" style={{ background: C.paper }}>
+                      <span className="truncate">{e.date} · {e.item}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono">{e.amount.toLocaleString()}฿</span>
+                        {e.approvalStatus === "รออนุมัติ" && manager ? (
+                          <div className="flex gap-1">
+                            <button onClick={() => approveExpense(e, "อนุมัติ")}><CheckCircle2 size={13} style={{ color: C.ok }} /></button>
+                            <button onClick={() => approveExpense(e, "ปฏิเสธ")}><X size={13} style={{ color: C.crimson }} /></button>
+                          </div>
+                        ) : (
+                          <Pill fg={e.approvalStatus === "อนุมัติ" ? C.ok : e.approvalStatus === "ปฏิเสธ" ? C.crimson : C.warn} bg={C.paper}>{e.approvalStatus}</Pill>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!readOnly && (String(b.owner) === String(user.id) || manager) && (
+                <Btn small variant="ghost" onClick={() => setExpenseFor(b)} icon={Plus}>บันทึกการเบิกจ่าย</Btn>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {data.isManager && data.income.length > 0 && (
+        <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>รายรับ</h3>
+          <table className="w-full text-sm">
+            <thead><tr style={{ color: C.slate }}>{["วันที่", "ประเภท", "จำนวนเงิน", "ผู้รับเงิน", "หมายเหตุ"].map((h) => <th key={h} className="text-left px-2 py-2 text-xs font-semibold">{h}</th>)}</tr></thead>
+            <tbody>
+              {data.income.map((i) => (
+                <tr key={i.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <td className="px-2 py-2 text-xs">{i.date}</td><td className="px-2 py-2 text-sm">{i.type}</td>
+                  <td className="px-2 py-2 text-xs font-mono" style={{ color: C.ok }}>{i.amount.toLocaleString()} ฿</td>
+                  <td className="px-2 py-2 text-xs">{i.receivedBy}</td><td className="px-2 py-2 text-xs" style={{ color: C.mute }}>{i.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showNewBudget && <Modal title="สร้างโครงการงบประมาณ" onClose={() => setShowNewBudget(false)} wide><BudgetForm staffList={staffList} onSubmit={submitBudget} /></Modal>}
+      {showIncome && <Modal title="บันทึกรายรับ" onClose={() => setShowIncome(false)}><IncomeForm onSubmit={submitIncome} /></Modal>}
+      {expenseFor && <Modal title={`บันทึกการเบิกจ่าย — ${expenseFor.name}`} onClose={() => setExpenseFor(null)}><ExpenseForm onSubmit={submitExpense} /></Modal>}
+    </div>
+  );
+}
+
+function BudgetForm({ staffList, onSubmit }) {
+  const [form, setForm] = useState({ name: "", owner: "", dept: "ศูนย์กีฬา", amount: 0, startDate: "2026-09-17", endDate: "", approvedBy: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.name.trim() && form.owner;
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <div className="col-span-2"><Field label="ชื่อโครงการ *"><input value={form.name} onChange={set("name")} style={inputStyle} /></Field></div>
+      <Field label="มอบหมายให้ (ผู้รับผิดชอบ) *">
+        <select value={form.owner} onChange={set("owner")} style={inputStyle}>
+          <option value="">— เลือกบุคลากร —</option>
+          {staffList.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
+        </select>
+      </Field>
+      <Field label="หน่วยงาน"><input value={form.dept} onChange={set("dept")} style={inputStyle} /></Field>
+      <Field label="งบที่ได้รับ (บาท)"><input type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))} style={inputStyle} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="วันที่เริ่ม"><input type="date" value={form.startDate} onChange={set("startDate")} style={inputStyle} /></Field>
+        <Field label="วันที่สิ้นสุด"><input type="date" value={form.endDate} onChange={set("endDate")} style={inputStyle} /></Field>
+      </div>
+      <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>สร้างโครงการ</Btn></div>
+    </div>
+  );
+}
+
+function IncomeForm({ onSubmit }) {
+  const [form, setForm] = useState({ date: "2026-09-17", type: "ค่าเช่าสนาม", amount: 0, receivedBy: "", receiptRef: "", note: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  return (
+    <div>
+      <Field label="วันที่"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
+      <Field label="ประเภท">
+        <select value={form.type} onChange={set("type")} style={inputStyle}>
+          <option>ค่าเช่าสนาม</option><option>ค่าสมาชิก</option><option>อื่นๆ</option>
+        </select>
+      </Field>
+      <Field label="จำนวนเงิน (บาท)"><input type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))} style={inputStyle} /></Field>
+      <Field label="ผู้รับเงิน"><input value={form.receivedBy} onChange={set("receivedBy")} style={inputStyle} /></Field>
+      <Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field>
+      <div className="flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!form.amount}>บันทึก</Btn></div>
+    </div>
+  );
+}
+
+function ExpenseForm({ onSubmit }) {
+  const [form, setForm] = useState({ date: "2026-09-17", item: "", amount: 0, note: "" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.item.trim() && form.amount > 0;
+  return (
+    <div>
+      <Field label="วันที่"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
+      <Field label="รายการ *"><input value={form.item} onChange={set("item")} style={inputStyle} /></Field>
+      <Field label="จำนวนเงิน (บาท) *"><input type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))} style={inputStyle} /></Field>
+      <div className="flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>ส่งคำขอเบิกจ่าย</Btn></div>
+    </div>
+  );
+}
+
+/* ============================================================
+   PROFILE — landing page after login. Change own photo, see own
+   info, and quick-jump into the modules relevant to this user.
+   ============================================================ */
+function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, patchTask, setTab, logAction }) {
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+  const [selectedDay, setSelectedDay] = useState(null); // null = today
+  const meta = ROLE_META[user.role];
+
+  const myTasks = tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name);
+  const myOverdue = myTasks.filter((t) => taskBucket(t) === "overdue").length;
+  const myToday = myTasks.filter((t) => taskBucket(t) === "today").length;
+  const myPeriods = schedule.filter((s) => s.teacher === user.name).length;
+  const myCompleted = myTasks.filter((t) => t.status === "COMPLETED").length;
+  const completionPct = myTasks.length ? Math.round((myCompleted / myTasks.length) * 100) : 0;
+
+  // week strip — Mon..Sun of the current week, anchored on TODAY (2026-09-17, Thu)
+  const todayDate = new Date(2026, 8, 17);
+  const monday = new Date(todayDate); monday.setDate(todayDate.getDate() - ((todayDate.getDay() + 6) % 7));
+  const weekDays = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+  const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const todayIso = isoOf(todayDate);
+  const activeIso = selectedDay || todayIso;
+  const dayLabel = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+  const tasksByDay = (iso) => myTasks.filter((t) => t.dueDate === iso);
+  const dayTasks = tasksByDay(activeIso).sort((a, b) => (a.dueTime || "").localeCompare(b.dueTime || ""));
+
+  const pick = () => fileRef.current?.click();
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr(""); setUploading(true);
+    try {
+      const url = await uploadProfilePhoto(user.id, file);
+      setUser((u) => ({ ...u, photoUrl: url }));
+      setStaffList((prev) => prev.map((s) => (s.id === user.id ? { ...s, photoUrl: url } : s)));
+      logAction("เปลี่ยนรูปโปรไฟล์");
+    } catch (ex) {
+      setErr(ex.message || "อัปโหลดไม่สำเร็จ");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const toggleDone = (t) => {
+    if (!patchTask) return;
+    patchTask(t.id, { status: t.status === "COMPLETED" ? "TODO" : "COMPLETED" });
+  };
+
+  const links = [
+    user.role !== "L0" && { key: "dashboard", label: "หน้าหลัก", icon: LayoutDashboard, desc: "ภาพรวมของคุณวันนี้" },
+    user.role !== "L0" && { key: "tasks", label: "งานของฉัน", icon: ClipboardList, desc: `${myTasks.length} งานทั้งหมด${myOverdue ? ` · ${myOverdue} เกินกำหนด` : ""}` },
+    user.role !== "L0" && { key: "calendar", label: "ปฏิทิน", icon: CalendarClock, desc: "งาน ตารางสอน และกิจกรรมทั้งหมด" },
+    (user.role === "L1" || user.role === "L2") && { key: "schedule", label: "ตารางสอนของฉัน", icon: CalendarDays, desc: `${myPeriods} คาบ/สัปดาห์` },
+    { key: "borrow", label: "ยืม–คืนอุปกรณ์", icon: ArrowLeftRight, desc: "ยืมหรือคืนอุปกรณ์" },
+    user.role !== "L0" && { key: "budget", label: user.role === "L3" || user.role === "L4" ? "งบประมาณ" : "งบของฉัน", icon: DollarSign, desc: "ดูโครงการและงบที่รับผิดชอบ" },
+  ].filter(Boolean);
+
+  return (
+    <div>
+      <SectionHead eyebrow="PROFILE" title="โปรไฟล์ของฉัน" sub="ข้อมูลส่วนตัวและทางลัดไปยังงานของคุณ" />
+
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="p-5 flex flex-col items-center text-center" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="relative mb-3">
+            <div className="w-24 h-24 rounded-full flex items-center justify-center overflow-hidden" style={{ background: meta.tint, border: `3px solid ${C.line}` }}>
+              {user.photoUrl ? (
+                <img src={user.photoUrl} alt={user.name} className="w-full h-full" style={{ objectFit: "cover" }} />
+              ) : (
+                <span className="text-2xl font-bold text-white">{user.name?.trim()?.[0] || "?"}</span>
+              )}
+            </div>
+            <button onClick={pick} disabled={uploading}
+              className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: C.crimson, color: C.white, border: `2px solid ${C.white}` }} title="เปลี่ยนรูปโปรไฟล์">
+              <Pencil size={13} />
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+          </div>
+          {uploading && <div className="text-xs mb-2" style={{ color: C.mute }}>กำลังอัปโหลด...</div>}
+          {err && <div className="text-xs mb-2" style={{ color: C.crimson }}>{err}</div>}
+          <div className="text-base font-bold" style={{ color: C.ink }}>{user.name}</div>
+          <div className="text-xs mt-1" style={{ color: C.mute }}>{user.title || "-"}</div>
+          <div className="mt-3"><Pill fg={meta.tint} bg="#F2F3F7">{meta.label}</Pill></div>
+        </div>
+
+        {/* circular completion gauge — echoes the "Efficiency" ring style, in our palette */}
+        <div className="p-5 flex flex-col items-center justify-center text-center" style={{ background: C.navyDeep, border: `1px solid ${C.line}` }}>
+          <CompletionRing pct={completionPct} />
+          <div className="text-xs mt-3" style={{ color: "rgba(255,255,255,0.55)" }}>อัตราความสำเร็จงาน</div>
+          <div className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>{myCompleted} / {myTasks.length} งาน</div>
+        </div>
+      </div>
+
+      <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+        <h3 className="text-sm font-bold mb-4" style={{ color: C.navy }}>ข้อมูลของฉัน</h3>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div><div className="text-xs" style={{ color: C.mute }}>Teacher ID</div><div className="font-mono font-medium" style={{ color: C.ink }}>{user.id}</div></div>
+          <div><div className="text-xs" style={{ color: C.mute }}>หน่วยงาน</div><div className="font-medium" style={{ color: C.ink }}>{user.dept || "-"}</div></div>
+          <div><div className="text-xs" style={{ color: C.mute }}>ตำแหน่ง/หน้าที่</div><div className="font-medium" style={{ color: C.ink }}>{user.title || "-"}</div></div>
+          <div><div className="text-xs" style={{ color: C.mute }}>ระดับสิทธิ์</div><div className="font-medium" style={{ color: C.ink }}>{user.role} — {meta.label}</div></div>
+        </div>
+        {(myOverdue > 0 || myToday > 0) && (
+          <div className="mt-4 p-3 flex items-center gap-2" style={{ background: C.badBg }}>
+            <AlertTriangle size={14} style={{ color: C.crimson }} />
+            <span className="text-xs" style={{ color: C.crimsonDeep }}>
+              {myOverdue > 0 && `${myOverdue} งานเกินกำหนด `}{myToday > 0 && `· ${myToday} งานครบกำหนดวันนี้`}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* week strip + day's tasks — echoes the date-strip task-app reference, in our palette */}
+      {user.role !== "L0" && (
+        <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold" style={{ color: C.navy }}>งานประจำสัปดาห์</h3>
+            <span className="text-xs" style={{ color: C.mute }}>{new Date(activeIso).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}</span>
+          </div>
+          <div className="grid grid-cols-7 gap-1.5 mb-4">
+            {weekDays.map((d) => {
+              const iso = isoOf(d);
+              const isToday = iso === todayIso;
+              const isActive = iso === activeIso;
+              const count = tasksByDay(iso).length;
+              return (
+                <button key={iso} onClick={() => setSelectedDay(iso === todayIso ? null : iso)}
+                  className="flex flex-col items-center py-2"
+                  style={{ background: isActive ? C.crimson : C.paper, border: `1px solid ${isActive ? C.crimson : C.line}` }}>
+                  <span className="text-[10px]" style={{ color: isActive ? "rgba(255,255,255,0.75)" : C.mute }}>{dayLabel[d.getDay()]}</span>
+                  <span className="text-sm font-bold mt-0.5" style={{ color: isActive ? C.white : isToday ? C.crimson : C.ink }}>{d.getDate()}</span>
+                  {count > 0 && <span className="w-1 h-1 rounded-full mt-1" style={{ background: isActive ? C.white : C.crimson }} />}
+                </button>
+              );
+            })}
+          </div>
+
+          {dayTasks.length === 0 ? (
+            <div className="text-xs text-center py-6" style={{ color: C.mute }}>ไม่มีงานในวันนี้ 🎉</div>
+          ) : (
+            <div className="space-y-2">
+              {dayTasks.map((t) => {
+                const pm = PRIORITY_META[t.priority] || PRIORITY_META.NORMAL;
+                const done = t.status === "COMPLETED";
+                return (
+                  <div key={t.id} className="flex items-center gap-3 px-3 py-2.5" style={{ background: done ? C.okBg : C.paper, borderLeft: `3px solid ${done ? C.ok : pm.fg}` }}>
+                    <button onClick={() => toggleDone(t)}
+                      className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+                      style={{ border: `2px solid ${done ? C.ok : C.line}`, background: done ? C.ok : "transparent" }}>
+                      {done && <CheckCircle2 size={12} color={C.white} />}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate" style={{ color: done ? C.mute : C.ink, textDecoration: done ? "line-through" : "none" }}>{t.title}</div>
+                      {t.location && <div className="text-xs" style={{ color: C.mute }}>{t.location}</div>}
+                    </div>
+                    {t.dueTime && <span className="text-xs font-mono shrink-0" style={{ color: C.slate }}>{t.dueTime}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ทางลัด</h3>
+      <div className="grid grid-cols-2 gap-4">
+        {links.map((l) => <QuickAction key={l.key} icon={l.icon} title={l.label} desc={l.desc} onClick={() => setTab(l.key)} />)}
+      </div>
+    </div>
+  );
+}
+
+function CompletionRing({ pct }) {
+  const r = 34, c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  return (
+    <svg width="88" height="88" viewBox="0 0 88 88">
+      <circle cx="44" cy="44" r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" />
+      <circle cx="44" cy="44" r={r} fill="none" stroke={C.accent} strokeWidth="8" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={offset} transform="rotate(-90 44 44)" />
+      <text x="44" y="49" textAnchor="middle" fontSize="20" fontWeight="700" fill={C.white} fontFamily={FONT}>{pct}%</text>
+    </svg>
   );
 }
