@@ -464,10 +464,10 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           background: "radial-gradient(60% 50% at 70% 20%, rgba(255,255,255,0.08), transparent 60%)",
         }} />
 
-        {/* vertical brand wordmark — real image asset along the right edge */}
-        <div className="hidden lg:block absolute right-4 top-4 bottom-4 w-24">
+        {/* vertical brand wordmark — real image asset, flush to the top-right corner */}
+        <div className="hidden lg:block absolute right-0 top-0 w-24">
           <img src="https://i.postimg.cc/vBFMdbbL/ACT-SPORT-CENTER.png" alt="ACT SPORT CENTER"
-            className="w-full h-full" style={{ objectFit: "contain" }} />
+            className="w-full" style={{ objectFit: "contain" }} />
         </div>
 
         {/* developer credit, bottom-right */}
