@@ -95,11 +95,28 @@ async function loadFromSheets() {
     id: String(r["ID"]), name: r["ชื่อ"], dept: r["หน่วยงาน"], role: r["หน้าที่"],
     phone: r["เบอร์โทร"] || "", level: (r["Level"] || "L1").trim(),
   }));
-  return { items, borrows, damages, staff };
+  const schedule = (data.schedule || []).map((r) => ({
+    id: `SC-${r._row}`, _row: r._row, day: r["วัน"], start: fmtTime(r["เวลาเริ่ม"]), end: fmtTime(r["เวลาจบ"]),
+    subject: r["วิชา / กิจกรรม"] || "", teacher: r["ครูผู้สอน"] || "", loc: r["สถานที่"] || "",
+    group: r["ระดับชั้น / กลุ่ม"] || "", equipment: r["อุปกรณ์ที่ใช้"] || "", qty: r["จำนวนที่ใช้"] || "", note: r["หมายเหตุ"] || "",
+  })).filter((s) => s.day); // skip fully blank template rows
+  return { items, borrows, damages, staff, schedule };
+}
+function fmtTime(v) {
+  if (!v) return "";
+  if (typeof v === "string") return v;
+  try { const d = new Date(v); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; } catch { return String(v); }
 }
 function postToSheets(action, payload) {
   if (!API_URL) return Promise.resolve();
   return fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, payload }) }).catch(() => {});
+}
+async function postToSheetsAwait(action, payload) {
+  if (!API_URL) throw new Error("ยังไม่ได้เชื่อมต่อ Google Sheets backend");
+  const res = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, payload }) });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "บันทึกไม่สำเร็จ");
+  return data.result;
 }
 
 // resize + compress a File to a JPEG data URL's base64 body, so uploads stay small
@@ -345,10 +362,10 @@ const ROLE_META = {
 
 const NAV = {
   L0: [["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
-  L1: [["dashboard", "งานของฉัน", LayoutDashboard], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench]],
-  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users]],
-  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
-  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
+  L1: [["dashboard", "งานของฉัน", LayoutDashboard], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", Clock]],
+  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", Clock]],
+  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", Clock], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
+  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", Clock], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
 };
 
 const canEdit = (role) => role === "L2" || role === "L3";
@@ -462,6 +479,7 @@ export default function App() {
   const [damages, setDamages] = useState([]);
   const [actionsLog, setActionsLog] = useState([]);
   const [staffList, setStaffList] = useState(STAFF);
+  const [schedule, setSchedule] = useState([]);
 
   const [sheetsError, setSheetsError] = useState("");
 
@@ -470,9 +488,10 @@ export default function App() {
     (async () => {
       if (API_URL) {
         try {
-          const { items: si, borrows: sb, damages: sd, staff: ss } = await loadFromSheets();
+          const { items: si, borrows: sb, damages: sd, staff: ss, schedule: sc } = await loadFromSheets();
           setItems(si); setBorrows(sb); setDamages(sd);
           if (ss && ss.length) setStaffList(ss);
+          setSchedule(sc || []);
         } catch (e) { setSheetsError("เชื่อมต่อ Google Sheets ไม่สำเร็จ — กำลังใช้ข้อมูลตัวอย่างในเครื่องแทน"); }
         setLoading(false);
         return;
@@ -534,6 +553,7 @@ export default function App() {
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
           {tab === "facility" && <Facility items={items} />}
           {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
           {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} logAction={logAction} />}
           {tab === "analytics" && <Analytics items={items} />}
@@ -1266,6 +1286,200 @@ function StaffForm({ initial, onSave, idEditable }) {
       </Field>
       <div className="flex justify-end mt-2">
         <Btn onClick={() => onSave(form)} disabled={!valid}>บันทึก</Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SCHEDULE / WORKLOAD — reads & writes "7.ตารางสอน"
+   L0: no access. L1/L2: own schedule only, read-only.
+   L3: everyone's schedule — add/assign duty, edit, delete,
+   with day+location overlap conflict checking. L4: view all.
+   ============================================================ */
+const DAYS = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"];
+
+function durationHrs(start, end) {
+  const [sh, sm] = (start || "0:0").split(":").map(Number);
+  const [eh, em] = (end || "0:0").split(":").map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return 0;
+  return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
+}
+
+function ScheduleView({ user, schedule, setSchedule, staffList, logAction }) {
+  const manager = canManage(user.role);
+  const [showNew, setShowNew] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [conflict, setConflict] = useState(null); // { form, with }
+
+  const mine = !manager && (user.role === "L1" || user.role === "L2");
+  const rows = mine ? schedule.filter((s) => s.teacher === user.name) : schedule;
+
+  const workload = useMemo(() => {
+    const m = {};
+    schedule.forEach((s) => {
+      m[s.teacher] = m[s.teacher] || { teacher: s.teacher, periods: 0, hours: 0 };
+      m[s.teacher].periods += 1;
+      m[s.teacher].hours += durationHrs(s.start, s.end);
+    });
+    return Object.values(m).sort((a, b) => b.hours - a.hours);
+  }, [schedule]);
+
+  const submitSchedule = async (form, force) => {
+    try {
+      const result = await postToSheetsAwait("addSchedule", { ...form, force });
+      if (result.conflict && !force) { setConflict({ form, with: result.with }); return; }
+      const rec = { id: `SC-${Date.now()}`, ...form };
+      setSchedule((prev) => [...prev, rec]);
+      logAction(`เพิ่มตารางสอน/มอบหมายงาน — ${form.teacher} วัน${form.day} ${form.start}-${form.end}`);
+      setShowNew(false); setConflict(null);
+    } catch (e) {
+      alert(e.message || "บันทึกไม่สำเร็จ");
+    }
+  };
+
+  const deleteRow = async (row) => {
+    try {
+      await postToSheetsAwait("deleteSchedule", { row: row._row });
+      setSchedule((prev) => prev.filter((x) => x.id !== row.id));
+      logAction(`ลบตารางสอน — ${row.teacher} วัน${row.day} ${row.start}-${row.end}`);
+    } catch (e) { alert(e.message || "ลบไม่สำเร็จ"); }
+    setConfirmDel(null);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางสอน & ภาระงาน"}
+        sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบทั้งหมด — มอบหมายงานหรือดูแลห้องเพิ่มเข้าตารางได้ที่นี่`}
+        right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มคาบ/มอบหมายงาน</Btn>} />
+
+      {rows.length === 0 ? (
+        <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
+          {mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางสอนในระบบ — กด \"เพิ่มคาบ/มอบหมายงาน\" เพื่อเริ่มบันทึก"}
+        </div>
+      ) : (
+        <div style={{ border: `1px solid ${C.line}`, background: C.white }} className="mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: C.navy, color: C.white }}>
+                {["วัน", "เวลา", "วิชา/กิจกรรม", ...(mine ? [] : ["ครูผู้สอน"]), "สถานที่", "กลุ่ม/ระดับชั้น", ""].map((h) => (
+                  <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((s) => (
+                <tr key={s.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <td className="px-3 py-2 text-xs">{s.day}</td>
+                  <td className="px-3 py-2 text-xs font-mono">{s.start}–{s.end}</td>
+                  <td className="px-3 py-2 text-sm font-medium" style={{ color: s.subject === "ดูแลห้อง" ? C.crimson : C.ink }}>{s.subject}</td>
+                  {!mine && <td className="px-3 py-2 text-xs">{s.teacher}</td>}
+                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.loc}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.group}</td>
+                  <td className="px-3 py-2">{manager && <button onClick={() => setConfirmDel(s)}><X size={14} style={{ color: C.crimson }} /></button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {manager && workload.length > 0 && (
+        <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ภาระงานรวมรายบุคคล (Workload)</h3>
+          <div className="grid grid-cols-3 gap-3">
+            {workload.map((w) => (
+              <div key={w.teacher} className="flex items-center justify-between px-3 py-2" style={{ border: `1px solid ${C.line}` }}>
+                <span className="text-sm truncate" style={{ color: C.ink }}>{w.teacher}</span>
+                <span className="text-xs shrink-0" style={{ color: C.slate }}>{w.periods} คาบ · {w.hours.toFixed(1)} ชม./สัปดาห์</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showNew && (
+        <Modal title="เพิ่มคาบสอน หรือ มอบหมายงาน" onClose={() => setShowNew(false)} wide>
+          <ScheduleForm staffList={staffList} onSubmit={(form) => submitSchedule(form, false)} />
+        </Modal>
+      )}
+      {conflict && (
+        <Modal title="เวลาซ้อนทับ ⚠️" onClose={() => setConflict(null)}>
+          <p className="text-sm mb-3" style={{ color: C.ink }}>
+            ช่วงเวลานี้ที่ <b>{conflict.form.loc}</b> วัน<b>{conflict.form.day}</b> ซ้อนกับ:
+          </p>
+          <div className="p-3 mb-4 text-sm" style={{ background: C.badBg, color: C.crimsonDeep }}>
+            {conflict.with.teacher} — {conflict.with.subject} ({conflict.with.start}–{conflict.with.end})
+          </div>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConflict(null)}>ยกเลิก แก้เวลาใหม่</Btn>
+            <Btn variant="crimson" onClick={() => submitSchedule(conflict.form, true)}>ยืนยันบันทึกทับซ้อน</Btn>
+          </div>
+        </Modal>
+      )}
+      {confirmDel && (
+        <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
+          <p className="text-sm mb-4" style={{ color: C.ink }}>ลบคาบ <b>{confirmDel.subject}</b> ของ <b>{confirmDel.teacher}</b> วัน{confirmDel.day} {confirmDel.start}-{confirmDel.end} ใช่หรือไม่?</p>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => deleteRow(confirmDel)} icon={X}>ยืนยันลบ</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ScheduleForm({ staffList, onSubmit }) {
+  const [form, setForm] = useState({ day: DAYS[0], start: "08:00", end: "09:00", subject: "", teacher: "", loc: "", group: "", equipment: "", qty: "", note: "" });
+  const [isDuty, setIsDuty] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.teacher.trim() && form.loc.trim() && form.subject.trim();
+  return (
+    <div>
+      <div className="flex items-center gap-4 mb-3">
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: C.slate }}>
+          <input type="radio" checked={!isDuty} onChange={() => { setIsDuty(false); setForm((f) => ({ ...f, subject: "" })); }} /> คาบสอนปกติ
+        </label>
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: C.slate }}>
+          <input type="radio" checked={isDuty} onChange={() => { setIsDuty(true); setForm((f) => ({ ...f, subject: "ดูแลห้อง" })); }} /> มอบหมายดูแลห้อง/สถานที่ (นับเป็น workload)
+        </label>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4">
+        <Field label="ครูผู้รับผิดชอบ *">
+          <select value={form.teacher} onChange={set("teacher")} style={inputStyle}>
+            <option value="">— เลือกบุคลากร —</option>
+            {staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+          </select>
+        </Field>
+        <Field label="สถานที่ *">
+          <select value={form.loc} onChange={set("loc")} style={inputStyle}>
+            <option value="">— เลือกสถานที่ —</option>
+            {LOCATIONS.map((l) => <option key={l.code} value={l.name}>{l.name}</option>)}
+          </select>
+        </Field>
+        <Field label="วัน">
+          <select value={form.day} onChange={set("day")} style={inputStyle}>
+            {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="เวลาเริ่ม"><input type="time" value={form.start} onChange={set("start")} style={inputStyle} /></Field>
+          <Field label="เวลาจบ"><input type="time" value={form.end} onChange={set("end")} style={inputStyle} /></Field>
+        </div>
+        <div className="col-span-2">
+          <Field label={isDuty ? "รายละเอียดงาน" : "วิชา/กิจกรรม *"}>
+            <input value={form.subject} onChange={set("subject")} disabled={isDuty} style={{ ...inputStyle, opacity: isDuty ? 0.7 : 1 }} placeholder={isDuty ? "ดูแลห้อง" : "เช่น พลศึกษา ป.4"} />
+          </Field>
+        </div>
+        <Field label="กลุ่ม/ระดับชั้น"><input value={form.group} onChange={set("group")} style={inputStyle} /></Field>
+        <Field label="อุปกรณ์ที่ใช้ (ถ้ามี)"><input value={form.equipment} onChange={set("equipment")} style={inputStyle} /></Field>
+        <div className="col-span-2">
+          <Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field>
+        </div>
+        <div className="col-span-2 flex justify-end mt-2">
+          <Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn>
+        </div>
       </div>
     </div>
   );
