@@ -8,6 +8,7 @@ import {
   FileText, Sparkles, LogOut, Search, ChevronRight, CheckCircle2, XCircle,
   AlertTriangle, Clock, Plus, X, Eye, Pencil, ShieldCheck, TrendingUp,
   Building2, Shirt, Trophy, Download, Bell, ChevronDown, User, Users,
+  ClipboardList, MessageSquare, UserCheck, Play, CalendarDays, ListChecks,
 } from "lucide-react";
 
 /* ============================================================
@@ -100,13 +101,59 @@ async function loadFromSheets() {
     subject: r["วิชา / กิจกรรม"] || "", teacher: r["ครูผู้สอน"] || "", loc: r["สถานที่"] || "",
     group: r["ระดับชั้น / กลุ่ม"] || "", equipment: r["อุปกรณ์ที่ใช้"] || "", qty: r["จำนวนที่ใช้"] || "", note: r["หมายเหตุ"] || "",
   })).filter((s) => s.day); // skip fully blank template rows
-  return { items, borrows, damages, staff, schedule };
+  const tasks = (data.tasks || []).map((r) => ({
+    id: r["ID"], _row: r._row, title: r["Title"] || "", description: r["Description"] || "",
+    priority: r["Priority"] || "NORMAL", status: r["Status"] || "TODO",
+    dueDate: r["DueDate"] ? fmtDate(r["DueDate"]) : "", dueTime: r["DueTime"] || "",
+    assignee: r["Assignee"] || "", createdBy: r["CreatedBy"] || "", location: r["Location"] || "",
+    relatedResource: r["RelatedResource"] || "", relatedFacility: r["RelatedFacility"] || "",
+    relatedBorrowId: r["RelatedBorrowId"] || "", relatedDamageId: r["RelatedDamageId"] || "",
+    taskType: r["TaskType"] || "general", comments: r["Comments"] || "",
+    createdDate: r["CreatedDate"] || "", completedDate: r["CompletedDate"] || "",
+  }));
+  return { items, borrows, damages, staff, schedule, tasks };
 }
 function fmtTime(v) {
   if (!v) return "";
   if (typeof v === "string") return v;
   try { const d = new Date(v); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; } catch { return String(v); }
 }
+
+/* ============================================================
+   WORK MANAGEMENT helpers
+   ============================================================ */
+const TODAY_ISO = "2026-09-17";
+const PRIORITY_META = {
+  CRITICAL: { label: "วิกฤต", fg: "#FFFFFF", bg: "#B91C3C" },
+  HIGH: { label: "สูง", fg: "#B91C3C", bg: "#FBEAEC" },
+  NORMAL: { label: "ปกติ", fg: "#B8791A", bg: "#FBF1DF" },
+  LOW: { label: "ต่ำ", fg: "#5B6273", bg: "#F2F3F7" },
+};
+const STATUS_META = {
+  TODO: { label: "รอดำเนินการ", fg: "#5B6273", bg: "#F2F3F7" },
+  IN_PROGRESS: { label: "กำลังทำ", fg: "#1E3A8A", bg: "#E8EEFC" },
+  WAITING: { label: "รอข้อมูล/อะไหล่", fg: "#B8791A", bg: "#FBF1DF" },
+  COMPLETED: { label: "เสร็จแล้ว", fg: "#1E7A4C", bg: "#EAF6EF" },
+  OVERDUE: { label: "เกินกำหนด", fg: "#FFFFFF", bg: "#B91C3C" },
+  CANCELLED: { label: "ยกเลิก", fg: "#8A8FA0", bg: "#F2F3F7" },
+};
+function isTaskOverdue(t) {
+  if (t.status === "COMPLETED" || t.status === "CANCELLED") return false;
+  if (!t.dueDate) return false;
+  return t.dueDate < TODAY_ISO;
+}
+function taskBucket(t) {
+  if (t.status === "COMPLETED") return "completed";
+  if (t.status === "CANCELLED") return "cancelled";
+  if (isTaskOverdue(t)) return "overdue";
+  if (t.dueDate === TODAY_ISO) return "today";
+  if (t.dueDate && t.dueDate > TODAY_ISO) return "upcoming";
+  return "todo";
+}
+function taskStatusDisplay(t) {
+  return isTaskOverdue(t) ? STATUS_META.OVERDUE : (STATUS_META[t.status] || STATUS_META.TODO);
+}
+
 function postToSheets(action, payload) {
   if (!API_URL) return Promise.resolve();
   return fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, payload }) }).catch(() => {});
@@ -362,10 +409,10 @@ const ROLE_META = {
 
 const NAV = {
   L0: [["borrow", "ยืม–คืนอุปกรณ์", ArrowLeftRight]],
-  L1: [["dashboard", "งานของฉัน", LayoutDashboard], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", Clock]],
-  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", Clock]],
-  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", Clock], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
-  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", Clock], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
+  L1: [["dashboard", "หน้าหลัก", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "แจ้งชำรุด", Wrench], ["schedule", "ตารางสอนของฉัน", CalendarDays]],
+  L2: [["dashboard", "ภาพรวมปฏิบัติการ", LayoutDashboard], ["tasks", "งานของฉัน", ClipboardList], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอนของฉัน", CalendarDays]],
+  L3: [["dashboard", "ภาพรวมระบบ", LayoutDashboard], ["tasks", "จัดการงาน", ClipboardList], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText], ["actions", "สั่งการบริหาร", Sparkles]],
+  L4: [["dashboard", "ภาพรวมผู้บริหาร", LayoutDashboard], ["tasks", "ภาพรวมงาน", ClipboardList], ["inventory", "ครุภัณฑ์", Package], ["facility", "สถานที่", MapPin], ["borrow", "ยืม–คืน", ArrowLeftRight], ["damage", "ชำรุด–ซ่อม", Wrench], ["staff", "บุคลากร", Users], ["schedule", "ตารางสอน", CalendarDays], ["analytics", "วิเคราะห์ข้อมูล", BarChart3], ["reports", "รายงาน", FileText]],
 };
 
 const canEdit = (role) => role === "L2" || role === "L3";
@@ -480,6 +527,7 @@ export default function App() {
   const [actionsLog, setActionsLog] = useState([]);
   const [staffList, setStaffList] = useState(STAFF);
   const [schedule, setSchedule] = useState([]);
+  const [tasks, setTasks] = useState([]);
 
   const [sheetsError, setSheetsError] = useState("");
 
@@ -488,10 +536,11 @@ export default function App() {
     (async () => {
       if (API_URL) {
         try {
-          const { items: si, borrows: sb, damages: sd, staff: ss, schedule: sc } = await loadFromSheets();
+          const { items: si, borrows: sb, damages: sd, staff: ss, schedule: sc, tasks: tk } = await loadFromSheets();
           setItems(si); setBorrows(sb); setDamages(sd);
           if (ss && ss.length) setStaffList(ss);
           setSchedule(sc || []);
+          setTasks(tk || []);
         } catch (e) { setSheetsError("เชื่อมต่อ Google Sheets ไม่สำเร็จ — กำลังใช้ข้อมูลตัวอย่างในเครื่องแทน"); }
         setLoading(false);
         return;
@@ -533,6 +582,49 @@ export default function App() {
     setActionsLog((prev) => [{ id: `A-${Date.now()}`, ts: new Date().toISOString(), user: user?.name, text }, ...prev].slice(0, 200));
   }, [user]);
 
+  const createTask = useCallback(async (payload) => {
+    const full = { ...payload, createdBy: user?.name || "" };
+    const r = await postToSheetsAwait("addTask", full);
+    const rec = { ...full, id: r.id, comments: "", createdDate: new Date().toISOString(), completedDate: "" };
+    setTasks((prev) => [rec, ...prev]);
+    logAction(`สร้างงานใหม่: ${payload.title}`);
+    return rec;
+  }, [user, logAction]);
+
+  const patchTask = useCallback(async (id, patch) => {
+    await postToSheetsAwait("updateTask", { id, ...patch });
+    setTasks((prev) => prev.map((t) => {
+      if (t.id !== id) return t;
+      const next = { ...t, ...patch };
+      if (patch.status === "COMPLETED") next.completedDate = new Date().toISOString();
+      if (patch.addComment) {
+        const stamp = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const line = `[${stamp}] ${patch.commentBy || ""}: ${patch.addComment}`;
+        next.comments = t.comments ? `${t.comments}\n${line}` : line;
+      }
+      delete next.addComment; delete next.commentBy;
+      return next;
+    }));
+    logAction(`อัปเดตงาน ${id}${patch.status ? " → " + patch.status : ""}`);
+  }, [logAction]);
+
+  // smart task creation: overdue borrows without a linked follow-up task get one automatically
+  useEffect(() => {
+    if (!user || loading || !API_URL) return;
+    if (!(user.role === "L2" || user.role === "L3")) return;
+    const overdueBorrows = borrows.filter((b) => b.status === "borrowed" && b.due && b.due < TODAY_ISO);
+    const linked = new Set(tasks.map((t) => t.relatedBorrowId).filter(Boolean));
+    overdueBorrows.filter((b) => !linked.has(b.id)).forEach((b) => {
+      createTask({
+        title: `ติดตามการคืน: ${b.itemName} (${b.itemCode})`,
+        description: `ยืมโดย ${b.borrower} กำหนดคืน ${b.due} ยังไม่มีการคืน`,
+        priority: "NORMAL", status: "TODO", dueDate: b.due, dueTime: "", assignee: "",
+        location: b.where || "", relatedResource: b.itemCode, relatedBorrowId: b.id, taskType: "follow-up",
+      }).catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading, borrows.length, tasks.length]);
+
   if (!user) return <LoginScreen loginId={loginId} setLoginId={setLoginId} onLogin={handleLogin} err={loginErr} />;
 
   const nav = NAV[user.role];
@@ -549,13 +641,14 @@ export default function App() {
           </div>
         )}
         <main className="flex-1 p-6 overflow-y-auto">
-          {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} setTab={setTab} />}
+          {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
+          {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
           {tab === "facility" && <Facility items={items} />}
           {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
           {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
-          {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} logAction={logAction} />}
+          {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
           {tab === "analytics" && <Analytics items={items} />}
           {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
           {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
@@ -756,7 +849,7 @@ function computeKpis(items, borrows) {
   return { total, normal, damaged, lost, disposed, activeBorrows, overdue, outOfStock, watch };
 }
 
-function Dashboard({ user, items, borrows, damages, setTab }) {
+function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
   const k = computeKpis(items, borrows);
   const byCat = useMemo(() => {
     const m = {};
@@ -769,17 +862,52 @@ function Dashboard({ user, items, borrows, damages, setTab }) {
 
   const topDamaged = useMemo(() => [...items].filter((i) => i.damaged > 0).sort((a, b) => b.damaged - a.damaged).slice(0, 6), [items]);
 
+  const myTasks = useMemo(() => tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name), [tasks, user.name]);
+  const taskCounts = useMemo(() => {
+    const c = { overdue: 0, today: 0, upcoming: 0, completed: 0 };
+    myTasks.forEach((t) => {
+      const b = taskBucket(t);
+      if (b === "overdue") c.overdue++;
+      else if (b === "today") c.today++;
+      else if (b === "upcoming") c.upcoming++;
+      else if (b === "completed") c.completed++;
+    });
+    return c;
+  }, [myTasks]);
+  const todaysTasks = useMemo(() => myTasks.filter((t) => taskBucket(t) === "today" || taskBucket(t) === "overdue"), [myTasks]);
+
+  const orgOverdueTasks = tasks.filter((t) => taskBucket(t) === "overdue");
+  const orgTodayTasks = tasks.filter((t) => taskBucket(t) === "today");
+  const orgCritical = tasks.filter((t) => t.priority === "CRITICAL" && t.status !== "COMPLETED" && t.status !== "CANCELLED");
+
   if (user.role === "L1") {
     const mine = borrows.filter((b) => b.borrower === user.name);
     return (
       <div>
-        <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี, ${user.name}`} sub="รายการยืม–คืนและงานของคุณ" />
+        <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี, ${user.name}`} sub="นี่คือสิ่งที่คุณต้องทำวันนี้" />
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <StatCard label="เกินกำหนด" value={taskCounts.overdue} icon={AlertTriangle} tone="crimson" />
+          <StatCard label="ครบกำหนดวันนี้" value={taskCounts.today} icon={Clock} tone="gold" />
+          <StatCard label="กำลังจะถึง" value={taskCounts.upcoming} icon={CalendarDays} tone="navy" />
+          <StatCard label="เสร็จแล้ว" value={taskCounts.completed} icon={CheckCircle2} tone="ok" />
+        </div>
+
+        {todaysTasks.length > 0 && (
+          <div className="mb-6 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><ClipboardList size={15} /> งานของวันนี้</h3>
+            <div className="space-y-2">
+              {todaysTasks.map((t) => <TaskRow key={t.id} t={t} onOpen={() => setTab("tasks")} />)}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-4 mb-6">
           <StatCard label="กำลังยืมอยู่" value={mine.filter((b) => b.status === "borrowed").length} icon={ArrowLeftRight} tone="navy" />
           <StatCard label="เกินกำหนดคืน" value={mine.filter((b) => b.status === "borrowed" && new Date(b.due) < new Date("2026-09-15")).length} icon={AlertTriangle} tone="crimson" />
           <StatCard label="คืนแล้วทั้งหมด" value={mine.filter((b) => b.status === "returned").length} icon={CheckCircle2} tone="ok" />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
+          <QuickAction icon={ClipboardList} title="งานของฉันทั้งหมด" desc="ดูรายการงานที่ได้รับมอบหมายทั้งหมด" onClick={() => setTab("tasks")} />
           <QuickAction icon={ArrowLeftRight} title="ยืมอุปกรณ์" desc="ค้นหาอุปกรณ์ที่พร้อมใช้และส่งคำขอยืม" onClick={() => setTab("borrow")} />
           <QuickAction icon={Wrench} title="แจ้งของชำรุด" desc="รายงานอุปกรณ์ที่พบว่าชำรุดหรือใช้งานไม่ได้" onClick={() => setTab("damage")} />
         </div>
@@ -796,6 +924,21 @@ function Dashboard({ user, items, borrows, damages, setTab }) {
         <StatCard label="ชำรุด (ชิ้น)" value={k.damaged.toLocaleString()} tone="crimson" icon={Wrench} />
         <StatCard label="ถูกยืมอยู่" value={k.activeBorrows} sub={k.overdue > 0 ? `${k.overdue} เกินกำหนด` : "ไม่มีเกินกำหนด"} tone="gold" icon={ArrowLeftRight} />
       </div>
+
+      {(orgOverdueTasks.length > 0 || orgTodayTasks.length > 0 || orgCritical.length > 0) && (
+        <div className="p-4 mb-4" style={{ background: C.badBg, border: `1px solid #E9B9C1` }}>
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={16} style={{ color: C.crimson }} />
+            <h3 className="text-sm font-bold" style={{ color: C.crimsonDeep }}>ATTENTION REQUIRED — ต้องการความสนใจ</h3>
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm" style={{ color: "#5B2430" }}>
+            {orgOverdueTasks.length > 0 && <span>🔴 {orgOverdueTasks.length} งานเกินกำหนด</span>}
+            {orgTodayTasks.length > 0 && <span>🟡 {orgTodayTasks.length} งานครบกำหนดวันนี้</span>}
+            {orgCritical.length > 0 && <span>⚠️ {orgCritical.length} งานวิกฤต</span>}
+          </div>
+          <button onClick={() => setTab("tasks")} className="text-xs font-semibold mt-2 underline" style={{ color: C.crimsonDeep }}>ไปที่หน้าจัดการงาน →</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="col-span-2 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
@@ -844,6 +987,27 @@ function Dashboard({ user, items, borrows, damages, setTab }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function TaskRow({ t, onOpen, showAssignee }) {
+  const sm = taskStatusDisplay(t);
+  const pm = PRIORITY_META[t.priority] || PRIORITY_META.NORMAL;
+  return (
+    <button onClick={onOpen} className="w-full flex items-center justify-between px-3 py-2.5 text-left" style={{ border: `1px solid ${C.line}` }}>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium truncate" style={{ color: C.ink }}>{t.title}</div>
+        <div className="text-xs mt-0.5" style={{ color: C.mute }}>
+          {t.location && <span>{t.location} · </span>}
+          {t.dueDate && <span>กำหนด {t.dueDate}{t.dueTime ? ` ${t.dueTime}` : ""}</span>}
+          {showAssignee && t.assignee && <span> · {t.assignee}</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0 ml-3">
+        <Pill fg={pm.fg} bg={pm.bg}>{pm.label}</Pill>
+        <Pill fg={sm.fg} bg={sm.bg}>{sm.label}</Pill>
+      </div>
+    </button>
   );
 }
 
@@ -1601,17 +1765,28 @@ function BorrowForm({ available, onSubmit }) {
 const SEVERITY = ["น้อย", "ปานกลาง", "สูง"];
 const MAINT_ACTIONS = ["Repair", "Waiting Part", "Replace", "Write-off"];
 
-function DamageMaint({ user, items, setItems, damages, setDamages, logAction }) {
+function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, logAction }) {
   const [showNew, setShowNew] = useState(false);
   const manage = canEdit(user.role) || canManage(user.role);
 
-  const submit = ({ itemId, qty, symptom }) => {
+  const submit = async ({ itemId, qty, symptom }) => {
     const item = items.find((i) => i.id === itemId);
     const rec = { id: `DM-${Date.now()}`, date: "2026-09-15", itemId, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name, severity: "ปานกลาง", status: "รอตรวจสอบ", action: "", cost: 0 };
     setDamages((p) => [rec, ...p]);
     logAction(`แจ้งชำรุด ${item.code} จำนวน ${qty}`);
-    postToSheets("damage", { date: rec.date, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name });
     setShowNew(false);
+    try {
+      const result = await postToSheetsAwait("damage", { date: rec.date, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name });
+      if (result.taskId) {
+        setTasks((prev) => [{
+          id: result.taskId, title: `ซ่อม/ตรวจสอบ: ${item.name} (${item.code})`, description: symptom,
+          priority: "HIGH", status: "TODO", dueDate: "", dueTime: "", assignee: "", createdBy: user.name,
+          location: "", relatedResource: item.code, relatedFacility: "", relatedBorrowId: "",
+          relatedDamageId: result.damageId || "", taskType: "maintenance", comments: "",
+          createdDate: new Date().toISOString(), completedDate: "",
+        }, ...prev]);
+      }
+    } catch (e) { /* damage already saved locally; task mirror is best-effort */ }
   };
 
   const advance = (d, patch) => {
@@ -1903,5 +2078,257 @@ function ManagementActions({ user, items, setItems, actionsLog, logAction }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ============================================================
+   WORK MANAGEMENT — task list, filters, detail/comments, team workload
+   L0: no access. L1/L2: their own tasks (assignee or creator), status
+   updates only. L3: everyone's tasks — create, assign/reassign, filter,
+   team workload. L4: everyone's tasks, read-only.
+   ============================================================ */
+const TASK_TYPE_LABEL = { general: "ทั่วไป", maintenance: "ซ่อมบำรุง", "follow-up": "ติดตามการคืน", inspection: "ตรวจสอบ", approval: "อนุมัติ" };
+const TASK_BUCKETS = [
+  ["today", "วันนี้"], ["overdue", "เกินกำหนด"], ["upcoming", "กำลังจะถึง"], ["todo", "ยังไม่กำหนด"], ["completed", "เสร็จแล้ว"],
+];
+
+function WorkManagement({ user, tasks, setTasks, staffList, items, createTask, patchTask, logAction }) {
+  const manager = canManage(user.role);
+  const readOnly = user.role === "L4";
+  const personal = user.role === "L1" || user.role === "L2";
+
+  const [bucket, setBucket] = useState("ALL");
+  const [priorityF, setPriorityF] = useState("ALL");
+  const [assigneeF, setAssigneeF] = useState("ALL");
+  const [q, setQ] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [detail, setDetail] = useState(null);
+
+  const base = personal ? tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name) : tasks;
+  const rows = base.filter((t) =>
+    (bucket === "ALL" || taskBucket(t) === bucket) &&
+    (priorityF === "ALL" || t.priority === priorityF) &&
+    (assigneeF === "ALL" || t.assignee === assigneeF) &&
+    (t.title.toLowerCase().includes(q.toLowerCase()) || (t.location || "").toLowerCase().includes(q.toLowerCase()))
+  ).sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
+
+  const counts = useMemo(() => {
+    const c = { today: 0, overdue: 0, upcoming: 0, todo: 0, completed: 0 };
+    base.forEach((t) => { const b = taskBucket(t); if (c[b] !== undefined) c[b]++; });
+    return c;
+  }, [base]);
+
+  const workload = useMemo(() => {
+    if (personal) return [];
+    const m = {};
+    tasks.forEach((t) => {
+      const who = t.assignee || "ยังไม่มอบหมาย";
+      m[who] = m[who] || { name: who, assigned: 0, inProgress: 0, completed: 0, overdue: 0 };
+      m[who].assigned += 1;
+      if (t.status === "IN_PROGRESS") m[who].inProgress += 1;
+      if (t.status === "COMPLETED") m[who].completed += 1;
+      if (taskBucket(t) === "overdue") m[who].overdue += 1;
+    });
+    return Object.values(m).sort((a, b) => b.assigned - a.assigned);
+  }, [tasks, personal]);
+
+  const assignees = useMemo(() => Array.from(new Set(tasks.map((t) => t.assignee).filter(Boolean))), [tasks]);
+
+  const submitNew = async (form) => {
+    await createTask(form);
+    setShowNew(false);
+  };
+
+  return (
+    <div>
+      <SectionHead eyebrow="WORK MANAGEMENT" title={personal ? "งานของฉัน" : readOnly ? "ภาพรวมงานทั้งหมด" : "จัดการงาน"}
+        sub={`${rows.length} งาน${personal ? " ที่มอบหมายให้คุณหรือคุณสร้างไว้" : "ในระบบ"}`}
+        right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>สร้างงานใหม่</Btn>} />
+
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <button onClick={() => setBucket("ALL")} className="px-3 py-1.5 text-xs font-medium" style={{ background: bucket === "ALL" ? C.navy : C.white, color: bucket === "ALL" ? C.white : C.ink, border: `1px solid ${C.line}` }}>ทั้งหมด ({base.length})</button>
+        {TASK_BUCKETS.map(([key, label]) => (
+          <button key={key} onClick={() => setBucket(key)} className="px-3 py-1.5 text-xs font-medium" style={{ background: bucket === key ? C.navy : C.white, color: bucket === key ? C.white : C.ink, border: `1px solid ${C.line}` }}>{label} ({counts[key] || 0})</button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="relative flex-1 max-w-xs">
+          <Search size={14} style={{ position: "absolute", left: 10, top: 10, color: C.mute }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาชื่องาน/สถานที่..." style={{ ...inputStyle, paddingLeft: 30 }} />
+        </div>
+        <select value={priorityF} onChange={(e) => setPriorityF(e.target.value)} style={{ ...inputStyle, width: 150 }}>
+          <option value="ALL">ทุกความสำคัญ</option>
+          {Object.keys(PRIORITY_META).map((p) => <option key={p} value={p}>{PRIORITY_META[p].label}</option>)}
+        </select>
+        {!personal && (
+          <select value={assigneeF} onChange={(e) => setAssigneeF(e.target.value)} style={{ ...inputStyle, width: 180 }}>
+            <option value="ALL">ทุกคน</option>
+            {assignees.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        )}
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ไม่มีงานในหมวดนี้</div>
+      ) : (
+        <div className="space-y-2 mb-6">
+          {rows.map((t) => <TaskRow key={t.id} t={t} onOpen={() => setDetail(t)} showAssignee={!personal} />)}
+        </div>
+      )}
+
+      {!personal && workload.length > 0 && (
+        <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><Users size={15} /> ภาระงานทีม (Team Workload)</h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ color: C.slate }}>
+                {["ผู้รับผิดชอบ", "มอบหมาย", "กำลังทำ", "เสร็จแล้ว", "เกินกำหนด", "อัตราเสร็จ"].map((h) => <th key={h} className="text-left px-2 py-2 text-xs font-semibold">{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {workload.map((w) => (
+                <tr key={w.name} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <td className="px-2 py-2">{w.name}</td>
+                  <td className="px-2 py-2">{w.assigned}</td>
+                  <td className="px-2 py-2">{w.inProgress}</td>
+                  <td className="px-2 py-2" style={{ color: C.ok }}>{w.completed}</td>
+                  <td className="px-2 py-2" style={{ color: w.overdue > 0 ? C.crimson : C.mute, fontWeight: w.overdue > 0 ? 600 : 400 }}>{w.overdue}</td>
+                  <td className="px-2 py-2 w-32">
+                    <div className="h-1.5 w-full" style={{ background: C.line }}>
+                      <div className="h-1.5" style={{ width: `${w.assigned ? Math.round((w.completed / w.assigned) * 100) : 0}%`, background: C.ok }} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showNew && (
+        <Modal title="สร้างงานใหม่" onClose={() => setShowNew(false)} wide>
+          <TaskForm staffList={staffList} items={items} onSubmit={submitNew} />
+        </Modal>
+      )}
+      {detail && (
+        <TaskDetailModal t={detail} user={user} manager={manager} readOnly={readOnly} staffList={staffList}
+          onClose={() => setDetail(null)} patchTask={patchTask} />
+      )}
+    </div>
+  );
+}
+
+function TaskForm({ staffList, items, onSubmit }) {
+  const [form, setForm] = useState({ title: "", description: "", priority: "NORMAL", status: "TODO", dueDate: "", dueTime: "", assignee: "", location: "", relatedResource: "", taskType: "general" });
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const valid = form.title.trim();
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <div className="col-span-2"><Field label="หัวข้องาน *"><input value={form.title} onChange={set("title")} style={inputStyle} /></Field></div>
+      <div className="col-span-2"><Field label="รายละเอียด"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field></div>
+      <Field label="ผู้รับผิดชอบ">
+        <select value={form.assignee} onChange={set("assignee")} style={inputStyle}>
+          <option value="">— ยังไม่มอบหมาย —</option>
+          {staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+        </select>
+      </Field>
+      <Field label="ประเภทงาน">
+        <select value={form.taskType} onChange={set("taskType")} style={inputStyle}>
+          {Object.entries(TASK_TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </Field>
+      <Field label="ลำดับความสำคัญ">
+        <select value={form.priority} onChange={set("priority")} style={inputStyle}>
+          {Object.entries(PRIORITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+        </select>
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="กำหนดเสร็จ (วันที่)"><input type="date" value={form.dueDate} onChange={set("dueDate")} style={inputStyle} /></Field>
+        <Field label="เวลา"><input type="time" value={form.dueTime} onChange={set("dueTime")} style={inputStyle} /></Field>
+      </div>
+      <Field label="สถานที่"><input value={form.location} onChange={set("location")} style={inputStyle} placeholder="เช่น สนามฟุตบอล" /></Field>
+      <Field label="อุปกรณ์ที่เกี่ยวข้อง (ถ้ามี)">
+        <select value={form.relatedResource} onChange={set("relatedResource")} style={inputStyle}>
+          <option value="">— ไม่ระบุ —</option>
+          {items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}
+        </select>
+      </Field>
+      <div className="col-span-2 flex justify-end mt-2">
+        <Btn onClick={() => onSubmit(form)} disabled={!valid}>สร้างงาน</Btn>
+      </div>
+    </div>
+  );
+}
+
+function TaskDetailModal({ t, user, manager, readOnly, staffList, onClose, patchTask }) {
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+  const sm = taskStatusDisplay(t);
+  const pm = PRIORITY_META[t.priority] || PRIORITY_META.NORMAL;
+  const canAct = !readOnly && (manager || t.assignee === user.name);
+
+  const doPatch = async (patch) => {
+    setSaving(true);
+    try { await patchTask(t.id, patch); onClose(); } finally { setSaving(false); }
+  };
+  const submitComment = async () => {
+    if (!comment.trim()) return;
+    setSaving(true);
+    try { await patchTask(t.id, { addComment: comment, commentBy: user.name }); setComment(""); onClose(); } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title={t.title} onClose={onClose} wide>
+      <div className="flex items-center gap-2 mb-4">
+        <Pill fg={pm.fg} bg={pm.bg}>{pm.label}</Pill>
+        <Pill fg={sm.fg} bg={sm.bg}>{sm.label}</Pill>
+        {t.taskType && <Pill fg={C.navySoft} bg="#F2F3F7">{TASK_TYPE_LABEL[t.taskType] || t.taskType}</Pill>}
+      </div>
+      {t.description && <p className="text-sm mb-4" style={{ color: C.ink }}>{t.description}</p>}
+      <div className="grid grid-cols-2 gap-3 text-xs mb-4" style={{ color: C.slate }}>
+        <div>ผู้รับผิดชอบ: <b style={{ color: C.ink }}>{t.assignee || "ยังไม่มอบหมาย"}</b></div>
+        <div>ผู้สร้าง: <b style={{ color: C.ink }}>{t.createdBy || "-"}</b></div>
+        <div>กำหนดเสร็จ: <b style={{ color: C.ink }}>{t.dueDate || "-"} {t.dueTime}</b></div>
+        <div>สถานที่: <b style={{ color: C.ink }}>{t.location || "-"}</b></div>
+        {t.relatedResource && <div>อุปกรณ์ที่เกี่ยวข้อง: <b style={{ color: C.ink }}>{t.relatedResource}</b></div>}
+        {t.relatedDamageId && <div>อ้างอิงการแจ้งชำรุด: <b style={{ color: C.ink }}>{t.relatedDamageId}</b></div>}
+        {t.relatedBorrowId && <div>อ้างอิงการยืม: <b style={{ color: C.ink }}>{t.relatedBorrowId}</b></div>}
+        <div>สร้างเมื่อ: <b style={{ color: C.ink }}>{t.createdDate ? new Date(t.createdDate).toLocaleDateString("th-TH") : "-"}</b></div>
+        {t.completedDate && <div>เสร็จเมื่อ: <b style={{ color: C.ok }}>{new Date(t.completedDate).toLocaleDateString("th-TH")}</b></div>}
+      </div>
+
+      {t.comments && (
+        <div className="mb-4">
+          <div className="text-xs font-semibold mb-1.5" style={{ color: C.slate }}>ประวัติความคืบหน้า</div>
+          <div className="p-2.5 text-xs whitespace-pre-line" style={{ background: C.paper, border: `1px solid ${C.line}`, color: C.ink, maxHeight: 140, overflowY: "auto" }}>{t.comments}</div>
+        </div>
+      )}
+
+      {canAct && (
+        <>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {t.status === "TODO" && <Btn small onClick={() => doPatch({ status: "IN_PROGRESS" })} disabled={saving} icon={Play}>เริ่มงาน</Btn>}
+            {t.status !== "COMPLETED" && <Btn small variant="ghost" onClick={() => doPatch({ status: "COMPLETED" })} disabled={saving} icon={CheckCircle2}>ทำเครื่องหมายเสร็จ</Btn>}
+            {t.status !== "WAITING" && t.status !== "COMPLETED" && <Btn small variant="ghost" onClick={() => doPatch({ status: "WAITING" })} disabled={saving}>รออะไหล่/ข้อมูล</Btn>}
+            {manager && t.status !== "CANCELLED" && t.status !== "COMPLETED" && <Btn small variant="crimson" onClick={() => doPatch({ status: "CANCELLED" })} disabled={saving} icon={X}>ยกเลิกงาน</Btn>}
+          </div>
+          {manager && (
+            <Field label="มอบหมาย / เปลี่ยนผู้รับผิดชอบ">
+              <select defaultValue={t.assignee} onChange={(e) => doPatch({ assignee: e.target.value })} style={inputStyle}>
+                <option value="">— ยังไม่มอบหมาย —</option>
+                {staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+              </select>
+            </Field>
+          )}
+          <Field label="เพิ่มความคิดเห็น / บันทึกความคืบหน้า">
+            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} style={inputStyle} />
+          </Field>
+          <div className="flex justify-end">
+            <Btn onClick={submitComment} disabled={saving || !comment.trim()} icon={MessageSquare}>บันทึกความคิดเห็น</Btn>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
