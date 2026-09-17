@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Package, MapPin, ArrowLeftRight, Wrench, BarChart3,
   FileText, Sparkles, LogOut, Search, ChevronRight, CheckCircle2, XCircle,
   AlertTriangle, Clock, Plus, X, Eye, Pencil, ShieldCheck, TrendingUp,
-  Building2, Shirt, Trophy, Download, Bell, ChevronDown, User,
+  Building2, Shirt, Trophy, Download, Bell, ChevronDown, User, Users,
 } from "lucide-react";
 
 /* ============================================================
@@ -447,8 +447,8 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   return (
     <div className="min-h-screen w-full flex" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
       {/* LEFT — illustration panel, image fills edge-to-edge */}
-      <div className="hidden md:block w-[46%] relative overflow-hidden">
-        <img src="https://i.postimg.cc/Dw70kfjW/Untitled-design-(5).png" alt="ACT Sport Center mascots"
+      <div className="hidden md:block w-[46%] relative overflow-hidden" style={{ borderRight: "3px solid #C9A15A" }}>
+        <img src="https://i.postimg.cc/KzSFyxxH/ACT-SPORT-CENTER-(2).png" alt="ACT Sport Center mascots"
           className="absolute inset-0 w-full h-full" style={{ objectFit: "cover", objectPosition: "center" }} />
       </div>
 
@@ -464,17 +464,23 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           background: "radial-gradient(60% 50% at 70% 20%, rgba(255,255,255,0.08), transparent 60%)",
         }} />
 
-        {/* vertical brand text along the right edge */}
-        <div className="hidden lg:flex absolute right-6 top-0 bottom-0 items-center">
-          <div className="text-3xl font-black tracking-widest select-none" style={{
-            writingMode: "vertical-rl", color: "transparent",
-            WebkitTextStroke: "1px rgba(255,255,255,0.18)",
-            letterSpacing: "0.15em",
-          }}>ACT SPORT CENTER</div>
+        {/* vertical brand wordmark — real image asset along the right edge */}
+        <div className="hidden lg:block absolute right-4 top-4 bottom-4 w-24">
+          <img src="https://i.postimg.cc/vBFMdbbL/ACT-SPORT-CENTER.png" alt="ACT SPORT CENTER"
+            className="w-full h-full" style={{ objectFit: "contain" }} />
         </div>
 
+        {/* developer credit, bottom-right */}
+        <div className="absolute bottom-4 right-6 lg:right-32 text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>Developer : P.Prayoon-Anutep</div>
+
         <div className="relative w-full max-w-sm mx-6">
-          <div className="text-3xl font-light mb-6" style={{ color: "rgba(255,255,255,0.75)" }}>Welcome</div>
+          <div className="flex items-center gap-3 mb-6">
+            <Users size={30} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
+            <div>
+              <div className="text-lg font-semibold" style={{ color: C.white }}>ACT SportHub</div>
+              <div className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>ลงทะเบียนเข้าใช้งานด้วยรหัสประจำตัวครู</div>
+            </div>
+          </div>
 
           {/* glass card */}
           <div className="relative p-6" style={{
@@ -519,7 +525,9 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
             </div>
           </div>
 
-          <div className="mt-6 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>© 2026 Assumption College Thonburi · Sport Center Resource Intelligence · v1.0.0</div>
+          <div className="mt-6 text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.35)" }}>
+            © 2026 Assumption College Thonburi<br />ACT Sport Center Resource Intelligence · v1.0.0
+          </div>
 
           {/* demo accounts */}
           <div className="mt-8 pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
