@@ -785,18 +785,16 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           background: "radial-gradient(60% 50% at 70% 20%, rgba(255,255,255,0.08), transparent 60%)",
         }} />
 
-        {/* mascot illustration — fills its column and centers vertically so it reads as a
-            deliberate hero image rather than a small graphic floating in empty space */}
-        <div className="relative shrink-0 overflow-hidden order-1 md:order-none flex items-center justify-center md:w-1/2 md:h-full md:py-10"
-          style={{ height: "34vh", minHeight: 200 }}>
-          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full md:w-auto md:max-w-full"
-            style={{ objectFit: "contain", objectPosition: "center bottom", maxHeight: "min(70vh, 640px)" }} />
+        {/* mascot illustration — full-bleed, matching the reference composition edge-to-edge */}
+        <div className="relative shrink-0 overflow-hidden order-1 md:order-none md:w-[48%] h-[34vh] md:h-full">
+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-contain md:object-cover object-bottom" />
         </div>
 
         {/* login column */}
-        <div className="relative flex-1 flex items-start md:items-center justify-center md:w-1/2 px-6 py-8 md:py-10">
+        <div className="relative flex-1 flex flex-col order-2 md:order-none px-6 md:px-14 py-8 md:pt-16 md:pb-10">
+          <h1 className="hidden md:block text-6xl font-black italic tracking-tight mb-10 shrink-0" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>SPORT CENTER</h1>
+          <div className="flex-1 flex items-start md:items-center justify-center md:justify-start">
           <div className="w-full max-w-md">
-            <h1 className="hidden md:block text-5xl font-black italic tracking-tight mb-6" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>SPORT CENTER</h1>
             <div className="flex items-center gap-3 mb-5">
               <Users size={28} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
               <div>
@@ -873,6 +871,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
               </div>
             </div>
           </div>
+          </div>
         </div>
       </div>
     </div>
@@ -887,9 +886,7 @@ function Sidebar({ user, nav, tab, setTab, onLogout }) {
   return (
     <aside className="desktop-sidebar shrink-0 flex-col" style={{ display: "none", width: 260, background: C.navyDeep, borderRight: "1px solid rgba(255,255,255,0.08)" }}>
       <div className="px-5 py-6 flex flex-col items-center text-center shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-        <Trophy size={28} style={{ color: C.accent }} />
-        <div className="text-white font-bold text-sm mt-2 tracking-wide">ACT SPORT CENTER</div>
-        <div className="text-[10px] mt-0.5" style={{ color: "#93A0C4" }}>LABOR OMNIA VINCIT</div>
+        <img src="https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png" alt="ACT 1961 Sport Center" className="w-24" style={{ objectFit: "contain" }} />
       </div>
       <button onClick={() => setTab("profile")} className="mx-4 mt-4 mb-2 p-3 flex items-center gap-3 text-left shrink-0"
         style={{ background: tab === "profile" ? C.crimson : "rgba(255,255,255,0.05)" }}>
@@ -963,7 +960,7 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
         <div className="absolute inset-0 z-50 flex" onClick={() => setDrawer(false)}>
           <div className="w-[78%] max-w-[320px] h-full flex flex-col" style={{ background: C.navyDeep }} onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-5 flex items-center gap-2 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", paddingTop: "calc(1.25rem + env(safe-area-inset-top))" }}>
-              <Trophy size={20} style={{ color: C.accent }} />
+              <img src="https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png" alt="ACT 1961 Sport Center" className="w-10 h-10" style={{ objectFit: "contain" }} />
               <div>
                 <div className="text-white font-bold text-sm leading-tight">ACT SPORT CENTER</div>
                 <div className="text-[11px]" style={{ color: "#93A0C4" }}>Resource Intelligence</div>
