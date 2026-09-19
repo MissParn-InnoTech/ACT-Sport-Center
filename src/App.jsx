@@ -791,11 +791,11 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         </div>
 
         {/* login column */}
-        <div className="relative flex-1 flex flex-col order-2 md:order-none px-6 md:px-14 py-8 md:pt-16 md:pb-10">
+        <div className="relative flex-1 flex flex-col order-2 md:order-none px-5 sm:px-6 md:px-14 py-8 md:pt-16 md:pb-10">
           <h1 className="hidden md:block text-6xl font-black italic tracking-tight mb-10 shrink-0" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>SPORT CENTER</h1>
           <div className="flex-1 flex items-start md:items-center justify-center md:justify-start">
           <div className="w-full max-w-md">
-            <div className="flex items-center gap-3 mb-5">
+            <div className="flex items-center gap-3 mb-5 justify-center text-center md:justify-start md:text-left">
               <Users size={28} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
               <div>
                 <div className="text-lg font-semibold" style={{ color: C.white }}>ACT SportHub</div>
@@ -823,7 +823,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                     }} />
                 </div>
               </div>
-              <div className="mb-2">
+              <div className="mb-6">
                 <label className="block text-sm font-semibold mb-1.5" style={{ color: C.white }}>Password</label>
                 <div className="relative">
                   <Lock size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
@@ -834,14 +834,14 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                       color: "rgba(255,255,255,0.5)", outline: "none",
                     }} />
                 </div>
-                <div className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>ระบบยืนยันตัวตนด้วยรหัสประจำตัวครูเท่านั้น — ยังไม่ต้องใช้รหัสผ่าน</div>
+                <div className="text-[11px] mt-2" style={{ color: "rgba(255,255,255,0.35)" }}>ระบบยืนยันตัวตนด้วยรหัสประจำตัวครูเท่านั้น — ยังไม่ต้องใช้รหัสผ่าน</div>
               </div>
 
-              {err && <div className="text-xs mt-3 flex items-center gap-1.5" style={{ color: "#FF9EAE" }}><AlertTriangle size={13} />{err}</div>}
+              {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#FF9EAE" }}><AlertTriangle size={13} />{err}</div>}
 
-              <div className="flex justify-end mt-5">
+              <div className="mt-2 md:mt-5 md:flex md:justify-end">
                 <button onClick={() => onLogin(loginId)}
-                  className="px-8 py-2.5 text-sm font-bold transition-transform active:scale-95"
+                  className="w-full md:w-auto px-8 py-3 md:py-2.5 text-sm font-bold transition-transform active:scale-95"
                   style={{
                     background: "linear-gradient(135deg,#FF8A3D,#E8641A)",
                     color: C.white,
