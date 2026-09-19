@@ -787,7 +787,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
         {/* mascot illustration — full-bleed, matching the reference composition edge-to-edge */}
         <div className="relative shrink-0 overflow-hidden order-1 md:order-none md:w-[48%] h-[34vh] md:h-full">
-          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-contain md:object-cover object-bottom" />
+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-bottom" />
         </div>
 
         {/* login column */}
