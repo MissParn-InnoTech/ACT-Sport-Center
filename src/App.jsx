@@ -758,6 +758,7 @@ export default function App() {
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   const LOGO_URL = "https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png";
   const MASCOT_URL = "https://i.postimg.cc/hvB9N1n8/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-3.png";
+  const MOBILE_BG_URL = "https://i.postimg.cc/90xFhcT9/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(6).png";
   const [navOpen, setNavOpen] = useState(false);
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
@@ -796,14 +797,25 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           background: "radial-gradient(60% 50% at 70% 20%, rgba(255,255,255,0.08), transparent 60%)",
         }} />
 
-        {/* mascot illustration — full-bleed, matching the reference composition edge-to-edge */}
-        <div className="relative shrink-0 overflow-hidden order-1 md:order-none md:w-[48%] h-[26dvh] md:h-full">
+        {/* mobile: full-bleed background photo with a black→red filter overlay, per the reference */}
+        <div className="md:hidden absolute inset-0 z-0" style={{
+          backgroundImage: `linear-gradient(180deg, rgba(10,4,4,0.5) 0%, rgba(130,15,25,0.4) 45%, rgba(8,3,3,0.92) 100%), url(${MOBILE_BG_URL})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center top",
+          backgroundRepeat: "no-repeat",
+        }} />
+
+        {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
+        <div className="hidden md:flex relative shrink-0 overflow-hidden md:w-[48%] md:h-full">
           <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-bottom" />
         </div>
 
         {/* login column */}
-        <div className="relative flex-1 flex flex-col order-2 md:order-none px-5 sm:px-6 md:px-14 py-5 md:pt-16 md:pb-10">
-          <h1 className="hidden md:block text-6xl font-black italic tracking-tight mb-10 shrink-0" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>SPORT CENTER</h1>
+        <div className="relative z-10 flex-1 flex flex-col px-5 sm:px-6 md:px-14 py-5 md:pt-16 md:pb-10">
+          <h1 className="text-4xl md:text-6xl font-black italic tracking-tight mb-6 md:mb-10 shrink-0 text-center md:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>
+            <span className="block md:hidden" style={{ color: "rgba(255,255,255,0.85)" }}>ACT</span>
+            SPORT CENTER
+          </h1>
           <div className="flex-1 flex items-start md:items-center justify-center md:justify-start">
           <div className="w-full max-w-md">
             <div className="flex items-center gap-3 mb-5 justify-center text-center md:justify-start md:text-left">
