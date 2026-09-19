@@ -799,7 +799,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
         {/* mobile: full-bleed background photo with a black→red filter overlay, per the reference */}
         <div className="md:hidden absolute inset-0 z-0" style={{
-          backgroundImage: `linear-gradient(180deg, rgba(10,4,4,0.5) 0%, rgba(130,15,25,0.4) 45%, rgba(8,3,3,0.92) 100%), url(${MOBILE_BG_URL})`,
+          backgroundImage: `linear-gradient(180deg, rgba(10,4,4,0.15) 0%, rgba(130,15,25,0.15) 45%, rgba(8,3,3,0.75) 100%), url(${MOBILE_BG_URL})`,
           backgroundSize: "cover",
           backgroundPosition: "center top",
           backgroundRepeat: "no-repeat",
