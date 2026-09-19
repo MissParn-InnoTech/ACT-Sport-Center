@@ -785,18 +785,18 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           background: "radial-gradient(60% 50% at 70% 20%, rgba(255,255,255,0.08), transparent 60%)",
         }} />
 
-        {/* mascot illustration */}
-        <div className="relative shrink-0 overflow-hidden order-1 md:order-none md:w-[55%]" style={{ height: "34vh", minHeight: 200 }}>
-          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="absolute inset-0 w-full h-full"
-            style={{ objectFit: "contain", objectPosition: "center bottom" }} />
-        </div>
-        <div className="hidden md:block md:absolute md:top-10 md:right-[8%] z-10">
-          <h1 className="text-5xl lg:text-6xl font-black italic tracking-tight" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>SPORT CENTER</h1>
+        {/* mascot illustration — fills its column and centers vertically so it reads as a
+            deliberate hero image rather than a small graphic floating in empty space */}
+        <div className="relative shrink-0 overflow-hidden order-1 md:order-none flex items-center justify-center md:w-1/2 md:h-full md:py-10"
+          style={{ height: "34vh", minHeight: 200 }}>
+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full md:w-auto md:max-w-full"
+            style={{ objectFit: "contain", objectPosition: "center bottom", maxHeight: "min(70vh, 640px)" }} />
         </div>
 
-        {/* login card */}
-        <div className="relative flex-1 flex items-start md:items-center justify-center md:justify-start px-6 py-8 md:py-0 md:w-[45%]">
-          <div className="w-full max-w-sm">
+        {/* login column */}
+        <div className="relative flex-1 flex items-start md:items-center justify-center md:w-1/2 px-6 py-8 md:py-10">
+          <div className="w-full max-w-md">
+            <h1 className="hidden md:block text-5xl font-black italic tracking-tight mb-6" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>SPORT CENTER</h1>
             <div className="flex items-center gap-3 mb-5">
               <Users size={28} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
               <div>
