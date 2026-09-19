@@ -9,7 +9,7 @@ import {
   AlertTriangle, Clock, Plus, X, Eye, Pencil, ShieldCheck, TrendingUp,
   Building2, Shirt, Trophy, Download, Bell, ChevronDown, User, Users,
   ClipboardList, MessageSquare, UserCheck, Play, CalendarDays, ListChecks,
-  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock,
+  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock, Menu,
 } from "lucide-react";
 import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -758,6 +758,7 @@ export default function App() {
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   const LOGO_URL = "https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png";
   const MASCOT_URL = "https://i.postimg.cc/xC5DVRhJ/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(3).png";
+  const [navOpen, setNavOpen] = useState(false);
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
       {/* top navbar — full-width on desktop; stays sensible when squeezed to mobile width */}
@@ -771,7 +772,17 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
           <span className="px-5 py-2 text-sm font-semibold" style={{ background: C.crimson, color: C.white }}>Contact</span>
         </nav>
+        <button onClick={() => setNavOpen((v) => !v)} className="md:hidden w-11 h-11 flex items-center justify-center shrink-0" aria-label="เมนู">
+          <Menu size={22} color="rgba(255,255,255,0.85)" />
+        </button>
         <div className="hidden lg:block text-4xl font-black tracking-widest select-none shrink-0" style={{ color: "rgba(255,255,255,0.12)", letterSpacing: "0.15em" }}>ACT</div>
+        {navOpen && (
+          <div className="md:hidden absolute top-full left-0 right-0 z-20 flex flex-col" style={{ background: "#2a2a2c", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+            <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
+            <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
+            <span className="mx-5 my-2 px-5 py-2 text-sm font-semibold text-center" style={{ background: C.crimson, color: C.white }}>Contact</span>
+          </div>
+        )}
       </header>
 
       {/* hero — mascot left, login card right on desktop; stacked on mobile */}
@@ -786,12 +797,12 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         }} />
 
         {/* mascot illustration — full-bleed, matching the reference composition edge-to-edge */}
-        <div className="relative shrink-0 overflow-hidden order-1 md:order-none md:w-[48%] h-[34vh] md:h-full">
+        <div className="relative shrink-0 overflow-hidden order-1 md:order-none md:w-[48%] h-[26dvh] md:h-full">
           <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-cover object-bottom" />
         </div>
 
         {/* login column */}
-        <div className="relative flex-1 flex flex-col order-2 md:order-none px-5 sm:px-6 md:px-14 py-8 md:pt-16 md:pb-10">
+        <div className="relative flex-1 flex flex-col order-2 md:order-none px-5 sm:px-6 md:px-14 py-5 md:pt-16 md:pb-10">
           <h1 className="hidden md:block text-6xl font-black italic tracking-tight mb-10 shrink-0" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>SPORT CENTER</h1>
           <div className="flex-1 flex items-start md:items-center justify-center md:justify-start">
           <div className="w-full max-w-md">
@@ -816,8 +827,9 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                   <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && onLogin(loginId)}
                     placeholder="Teacher ID เช่น T00125"
+                    className="focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25 transition-all duration-200"
                     style={{
-                      width: "100%", padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
+                      width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
                       background: "rgba(158,27,43,0.28)", border: "1px solid rgba(255,255,255,0.15)",
                       color: C.white, outline: "none",
                     }} />
@@ -829,7 +841,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                   <Lock size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
                   <input type="password" placeholder="Password" disabled
                     style={{
-                      width: "100%", padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
+                      width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
                       background: "rgba(158,27,43,0.28)", border: "1px solid rgba(255,255,255,0.15)",
                       color: "rgba(255,255,255,0.5)", outline: "none",
                     }} />
@@ -841,8 +853,9 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
               <div className="mt-2 md:mt-5 md:flex md:justify-end">
                 <button onClick={() => onLogin(loginId)}
-                  className="w-full md:w-auto px-8 py-3 md:py-2.5 text-sm font-bold transition-transform active:scale-95"
+                  className="w-full md:w-auto px-8 py-3 md:py-2.5 text-sm font-bold transition-all duration-200 active:scale-95 hover:brightness-110 hover:shadow-[0_0_28px_rgba(232,100,26,0.75)]"
                   style={{
+                    minHeight: 48,
                     background: "linear-gradient(135deg,#FF8A3D,#E8641A)",
                     color: C.white,
                     boxShadow: "0 0 18px rgba(232,100,26,0.55), 0 4px 10px rgba(0,0,0,0.3)",
