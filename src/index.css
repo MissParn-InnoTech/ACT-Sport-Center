@@ -54,6 +54,18 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* the main column (topbar + content + bottom nav) must fill available
+   height at EVERY width, not just desktop — otherwise short pages leave
+   the bottom nav stranded mid-screen instead of pinned to the bottom */
+.app-shell-main-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 /* ---- Desktop breakpoint: widen into a persistent-sidebar layout ----
    Below 768px the app stays a locked, centered mobile-app frame
    (drawer + bottom nav). At 768px and above it becomes a normal wide
@@ -65,13 +77,6 @@ body {
     box-shadow: none;
     border-left: 1px solid rgba(255,255,255,0.06);
     border-right: 1px solid rgba(255,255,255,0.06);
-  }
-  .app-shell-main-col {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
   }
   .mobile-only {
     display: none !important;
