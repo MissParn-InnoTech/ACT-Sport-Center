@@ -799,7 +799,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
         {/* mobile: full-bleed background photo with a black→red filter overlay, per the reference */}
         <div className="md:hidden absolute inset-0 z-0" style={{
-          backgroundImage: `linear-gradient(180deg, rgba(10,4,4,0.15) 0%, rgba(130,15,25,0.15) 45%, rgba(8,3,3,0.75) 100%), url(${MOBILE_BG_URL})`,
+          backgroundImage: `linear-gradient(180deg, rgba(10,4,4,0.15) 0%, rgba(130,15,25,0.15) 45%, rgba(8,3,3,0.75) 100%), url("${MOBILE_BG_URL}")`,
           backgroundSize: "cover",
           backgroundPosition: "center top",
           backgroundRepeat: "no-repeat",
@@ -812,7 +812,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
         {/* login column */}
         <div className="relative z-10 flex-1 flex flex-col px-5 sm:px-6 md:px-14 py-5 md:pt-16 md:pb-10">
-          <h1 className="text-4xl md:text-6xl font-black italic tracking-tight mb-6 md:mb-10 shrink-0 text-center md:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)" }}>
+          <h1 className="text-4xl md:text-6xl tracking-tight mb-6 md:mb-10 shrink-0 text-center md:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)", fontFamily: "'Anton', sans-serif" }}>
             <span className="block md:hidden" style={{ color: "rgba(255,255,255,0.85)" }}>ACT</span>
             SPORT CENTER
           </h1>
