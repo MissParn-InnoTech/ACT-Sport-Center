@@ -757,7 +757,7 @@ export default function App() {
    ============================================================ */
 function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   const LOGO_URL = "https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png";
-  const MASCOT_URL = "https://i.postimg.cc/xC5DVRhJ/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(3).png";
+  const MASCOT_URL = "https://i.postimg.cc/hvB9N1n8/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-3.png";
   const [navOpen, setNavOpen] = useState(false);
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
