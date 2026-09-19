@@ -806,8 +806,8 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
             <div className="relative p-6" style={{
               background: "linear-gradient(160deg, rgba(158,27,43,0.35), rgba(30,30,32,0.55))",
               backdropFilter: "blur(12px)",
-              border: "1px solid rgba(255,255,255,0.14)",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)",
+              border: "1px solid rgba(232,100,26,0.35)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1), 0 0 40px rgba(200,30,58,0.18)",
             }}>
               <div className="mb-4">
                 <label className="block text-sm font-semibold mb-1.5" style={{ color: C.white }}>Username</label>
@@ -841,8 +841,12 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
               <div className="flex justify-end mt-5">
                 <button onClick={() => onLogin(loginId)}
-                  className="px-8 py-2.5 text-sm font-bold"
-                  style={{ background: C.white, color: C.crimsonDeep }}>
+                  className="px-8 py-2.5 text-sm font-bold transition-transform active:scale-95"
+                  style={{
+                    background: "linear-gradient(135deg,#FF8A3D,#E8641A)",
+                    color: C.white,
+                    boxShadow: "0 0 18px rgba(232,100,26,0.55), 0 4px 10px rgba(0,0,0,0.3)",
+                  }}>
                   Login
                 </button>
               </div>
