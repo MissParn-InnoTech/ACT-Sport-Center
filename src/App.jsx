@@ -1835,6 +1835,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   const [confirmDel, setConfirmDel] = useState(null);
   const [conflict, setConflict] = useState(null); // { form, with }
   const [budget, setBudget] = useState({ budgets: [], loaded: false });
+  const [editRow, setEditRow] = useState(null); // แถวที่กำลังแก้ไขรายครั้งในมุมมองกริด
 
   const mine = !manager && (user.role === "L1" || user.role === "L2");
   // เทียบชื่อครูแบบตัดคำนำหน้าออกก่อน (นาย/น.ส./มิส/ม./ครู ฯลฯ) เพราะชื่อครูผู้สอนที่
@@ -1888,6 +1889,17 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
     setConfirmDel(null);
   };
 
+  const submitEditSchedule = async (form) => {
+    try {
+      await postToSheetsAwait("updateSchedule", { row: editRow._row, ...form });
+      setSchedule((prev) => prev.map((x) => (x._row === editRow._row ? { ...x, ...form } : x)));
+      logAction(`แก้ไขตารางสอน — ${form.teacher || editRow.teacher} วัน${form.day} ${form.start}-${form.end}`);
+      setEditRow(null);
+    } catch (e) {
+      alert(e.message || "แก้ไขไม่สำเร็จ");
+    }
+  };
+
   return (
     <div>
       <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางสอน & ภาระงาน"}
@@ -1898,12 +1910,14 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
           {mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางสอนในระบบ — กด \"เพิ่มคาบ/มอบหมายงาน\" เพื่อเริ่มบันทึก"}
         </div>
+      ) : mine ? (
+        <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
       ) : (
         <div style={{ border: `1px solid ${C.line}`, background: C.white }} className="mb-6">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: C.navy, color: C.white }}>
-                {["วัน", "เวลา", "วิชา/กิจกรรม", ...(mine ? [] : ["ครูผู้สอน"]), "สถานที่", "กลุ่ม/ระดับชั้น", ""].map((h) => (
+                {["วัน", "เวลา", "วิชา/กิจกรรม", "ครูผู้สอน", "สถานที่", "กลุ่ม/ระดับชั้น", ""].map((h) => (
                   <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>
                 ))}
               </tr>
@@ -1914,10 +1928,10 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
                   <td className="px-3 py-2 text-xs">{s.day}</td>
                   <td className="px-3 py-2 text-xs font-mono">{s.start}–{s.end}</td>
                   <td className="px-3 py-2 text-sm font-medium" style={{ color: s.subject === "ดูแลห้อง" ? C.crimson : C.ink }}>{s.subject}</td>
-                  {!mine && <td className="px-3 py-2 text-xs">{s.teacher}</td>}
+                  <td className="px-3 py-2 text-xs">{s.teacher}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.loc}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{s.group}</td>
-                  <td className="px-3 py-2">{manager && <button onClick={() => setConfirmDel(s)}><X size={14} style={{ color: C.crimson }} /></button>}</td>
+                  <td className="px-3 py-2">{manager && s._row && <button onClick={() => setConfirmDel(s)}><X size={14} style={{ color: C.crimson }} /></button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -2008,13 +2022,18 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
           </div>
         </Modal>
       )}
+      {editRow && (
+        <Modal title="แก้ไขคาบสอนครั้งนี้" onClose={() => setEditRow(null)} wide>
+          <ScheduleForm staffList={staffList} initial={editRow} submitLabel="บันทึกการแก้ไข" onSubmit={submitEditSchedule} />
+        </Modal>
+      )}
     </div>
   );
 }
 
-function ScheduleForm({ staffList, onSubmit }) {
-  const [form, setForm] = useState({ day: DAYS[0], start: "08:00", end: "09:00", subject: "", teacher: "", loc: "", group: "", equipment: "", qty: "", note: "" });
-  const [isDuty, setIsDuty] = useState(false);
+function ScheduleForm({ staffList, onSubmit, initial, submitLabel = "บันทึก" }) {
+  const [form, setForm] = useState({ day: DAYS[0], start: "08:00", end: "09:00", subject: "", teacher: "", loc: "", group: "", equipment: "", qty: "", note: "", ...(initial || {}) });
+  const [isDuty, setIsDuty] = useState(initial ? initial.subject === "ดูแลห้อง" : false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const valid = form.teacher.trim() && form.loc.trim() && form.subject.trim();
   return (
@@ -2060,9 +2079,85 @@ function ScheduleForm({ staffList, onSubmit }) {
           <Field label="หมายเหตุ"><textarea rows={2} value={form.note} onChange={set("note")} style={inputStyle} /></Field>
         </div>
         <div className="col-span-2 flex justify-end mt-2">
-          <Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn>
+          <Btn onClick={() => onSubmit(form)} disabled={!valid}>{submitLabel}</Btn>
         </div>
       </div>
+    </div>
+  );
+}
+
+// สีการ์ดในตารางแบบกริด — ไล่สีตามชื่อวิชา/กิจกรรม ให้ดูเป็นระเบียบและแยกแยะง่าย
+const SCHEDULE_CARD_COLORS = [
+  { bg: "#F1D2D6", fg: "#7A1220", bar: C.crimson },
+  { bg: "#DCEEFB", fg: "#1B5E8A", bar: "#2E8FCB" },
+  { bg: "#E3F3E6", fg: "#1E7A4C", bar: "#37A868" },
+  { bg: "#FBF1DF", fg: "#8A5A0C", bar: "#B8791A" },
+  { bg: "#EDE3FB", fg: "#5B3B9E", bar: "#7C4FD1" },
+  { bg: "#FDE6EF", fg: "#9E3B6E", bar: "#D15C97" },
+];
+function scheduleCardColor(subject) {
+  let h = 0;
+  const s = String(subject || "");
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % SCHEDULE_CARD_COLORS.length;
+  return SCHEDULE_CARD_COLORS[h < 0 ? 0 : h];
+}
+
+// ตารางสอนแบบกริด (วัน x คาบ) สำหรับมุมมอง "ตารางสอนของฉัน" — คลิกที่คาบซึ่งเพิ่มเอง
+// ในระบบ (มี _row) เพื่อแก้ไข/ลบรายครั้งได้ทันที ส่วนคาบที่ดึงมาจากชีตตารางสอนกลาง
+// อัตโนมัติ (ไม่มี _row) จะดูได้อย่างเดียว เพราะแก้ที่นี่แล้วจะไม่สะท้อนกลับไปต้นทาง
+function ScheduleGrid({ rows, onEdit, onDelete }) {
+  const days = DAYS.filter((d) => rows.some((s) => s.day === d));
+  const dayList = days.length ? days : DAYS.slice(0, 6);
+  const slots = useMemo(() => {
+    const map = {};
+    rows.forEach((s) => { map[`${s.start}|${s.end}`] = { start: s.start, end: s.end }; });
+    return Object.values(map).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  }, [rows]);
+
+  if (slots.length === 0) return null;
+
+  return (
+    <div className="mb-6 overflow-x-auto" style={{ border: `1px solid ${C.line}`, background: C.white }}>
+      <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 720 }}>
+        <thead>
+          <tr>
+            <th className="text-left px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 100 }}>เวลา</th>
+            {dayList.map((d) => (
+              <th key={d} className="text-center px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 150 }}>{d}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {slots.map((slot) => (
+            <tr key={`${slot.start}-${slot.end}`} style={{ borderTop: `1px solid ${C.line}` }}>
+              <td className="px-3 py-2 text-xs align-top font-mono" style={{ background: C.paper, color: C.slate }}>{slot.start}–{slot.end}</td>
+              {dayList.map((d) => {
+                const s = rows.find((r) => r.day === d && r.start === slot.start && r.end === slot.end);
+                if (!s) return <td key={d} className="px-2 py-2 text-center text-xs align-middle" style={{ color: C.mute }}>–</td>;
+                const col = scheduleCardColor(s.subject);
+                const editable = !!s._row;
+                return (
+                  <td key={d} className="px-2 py-2 align-top">
+                    <div className="p-2" style={{ background: col.bg, borderLeft: `3px solid ${col.bar}` }}>
+                      <div className="text-xs font-bold" style={{ color: col.fg }}>{s.subject}</div>
+                      {s.loc && <div className="text-[11px] mt-0.5" style={{ color: col.fg }}>{s.loc}</div>}
+                      {s.group && <div className="text-[11px]" style={{ color: col.fg, opacity: 0.85 }}>{s.group}</div>}
+                      {editable ? (
+                        <div className="flex gap-2 mt-1.5">
+                          <button onClick={() => onEdit(s)} className="text-[11px] underline" style={{ color: col.fg }}>แก้ไข</button>
+                          <button onClick={() => onDelete(s)} className="text-[11px] underline" style={{ color: C.crimson }}>ลบ</button>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] mt-1" style={{ color: col.fg, opacity: 0.7 }}>จากตารางสอนกลาง</div>
+                      )}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
