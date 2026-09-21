@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  height: 100%;
+  /* dynamic viewport height: shrinks/grows with mobile browser URL bar instead of
+     leaving dead space or getting clipped underneath it */
+  height: 100dvh;
+}
+body {
+  margin: 0;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow-x: hidden;         /* never allow horizontal page scroll */
+  overscroll-behavior-y: none;
+  background: #0A0A0A;
+  -webkit-text-size-adjust: 100%;
+}
+#root {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+/* the app shell fills whatever device it's on edge-to-edge — no fixed
+   "phone frame" width, no letterboxing. On very wide monitors it caps
+   out so lines of text don't stretch to unreadable widths, but that
+   cap is generous (1600px) and always full width below it. */
+.app-shell {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* any element inside the app that scrolls its own content vertically should
+   never be allowed to introduce horizontal overflow */
+.app-shell * {
+  max-width: 100%;
+}
+.app-shell table {
+  max-width: none; /* tables opt back in — they scroll inside their own wrapper, see .table-scroll */
+}
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* bottom tab bar pinned flush to the true screen edge (not just the end
+   of the flex column) so it never drifts on short pages or bouncy
+   mobile scrolling, on any phone width */
+.bottom-nav-fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+}
+
+/* the main column (topbar + content + bottom nav) must fill available
+   height at EVERY width, not just desktop — otherwise short pages leave
+   the bottom nav stranded mid-screen instead of pinned to the bottom */
+.app-shell-main-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---- Desktop breakpoint: widen into a persistent-sidebar layout ----
+   Below 768px the app stays a locked, centered mobile-app frame
+   (drawer + bottom nav). At 768px and above it becomes a normal wide
+   web app: a fixed left sidebar plus a flexible content column. */
+@media (min-width: 768px) {
+  .app-shell-auth {
+    max-width: 1280px;
+    flex-direction: row;
+    box-shadow: none;
+    border-left: 1px solid rgba(255,255,255,0.06);
+    border-right: 1px solid rgba(255,255,255,0.06);
+  }
+  .mobile-only {
+    display: none !important;
+  }
+  .desktop-sidebar {
+    display: flex !important;
+  }
+}
