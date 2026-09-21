@@ -1836,8 +1836,12 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   const [conflict, setConflict] = useState(null); // { form, with }
   const [budget, setBudget] = useState({ budgets: [], loaded: false });
   const [editRow, setEditRow] = useState(null); // แถวที่กำลังแก้ไขรายครั้งในมุมมองกริด
+  // หัวหน้า (manager) ก็มีตารางสอนของตัวเองเหมือนกัน — ให้เลือกดูได้ว่าจะดูเฉพาะ
+  // ตารางของตัวเอง (ค่าเริ่มต้น) หรือสลับไปดูตารางรวมทุกคน/มอบหมายงาน
+  const [managerViewMine, setManagerViewMine] = useState(true);
 
-  const mine = !manager && (user.role === "L1" || user.role === "L2");
+  const hasOwnSchedule = user.role === "L1" || user.role === "L2" || manager;
+  const mine = hasOwnSchedule && (!manager || managerViewMine);
   // เทียบชื่อครูแบบตัดคำนำหน้าออกก่อน (นาย/น.ส./มิส/ม./ครู ฯลฯ) เพราะชื่อครูผู้สอนที่
   // ดึงมาจากชีตตารางสอน (เช่น "ม.ชาญวิทย์ พึ่งอิ่ม") อาจสะกดคำนำหน้าไม่ตรงกับชื่อที่
   // login เข้ามา (เช่น "นายชาญวิทย์ พึ่งอิ่ม" จากชีตบุคลากร)
@@ -1904,7 +1908,25 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
     <div>
       <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางสอน & ภาระงาน"}
         sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบทั้งหมด — มอบหมายงานหรือดูแลห้องเพิ่มเข้าตารางได้ที่นี่`}
-        right={manager && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มคาบ/มอบหมายงาน</Btn>} />
+        right={
+          <div className="flex items-center gap-2">
+            {manager && (
+              <div className="flex items-center" style={{ border: `1px solid ${C.line}` }}>
+                <button onClick={() => setManagerViewMine(true)}
+                  className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+                  ตารางของฉัน
+                </button>
+                <button onClick={() => setManagerViewMine(false)}
+                  className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={!managerViewMine ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+                  ตารางรวมทุกคน
+                </button>
+              </div>
+            )}
+            {manager && !mine && <Btn onClick={() => setShowNew(true)} icon={Plus}>เพิ่มคาบ/มอบหมายงาน</Btn>}
+          </div>
+        } />
 
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
@@ -1980,7 +2002,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
         </div>
       )}
 
-      {manager && workload.length > 0 && (
+      {manager && !mine && workload.length > 0 && (
         <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
           <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ภาระงานรวมรายบุคคล (Workload)</h3>
           <div className="grid grid-cols-2 gap-3">
