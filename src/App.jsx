@@ -99,7 +99,7 @@ async function loadFromSheets() {
   const damages = data.damages.map((r) => ({
     id: `DM-${r._row}`, _row: r._row, date: fmtDate(r["วันที่แจ้ง"]), itemCode: r["รหัสอุปกรณ์"],
     itemName: r["ชื่ออุปกรณ์"], qty: Number(r["จำนวน"]) || 0, symptom: r["อาการ / สาเหตุ"] || "",
-    reporter: r["ผู้แจ้ง"], severity: "ปานกลาง", status: r["สถานะ"] || "รอตรวจสอบ",
+    location: r["สถานที่"] || "", reporter: r["ผู้แจ้ง"], severity: "ปานกลาง", status: r["สถานะ"] || "รอตรวจสอบ",
   }));
   const staff = (data.staff || []).map((r) => ({
     id: String(r["ID"]), name: r["ชื่อ"], dept: r["หน่วยงาน"], role: r["หน้าที่"],
@@ -732,10 +732,10 @@ export default function App() {
           {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
           {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
-          {tab === "facility" && <Facility items={items} />}
+          {tab === "facility" && <Facility items={items} schedule={schedule} pmSchedule={pmSchedule} setTab={setTab} />}
           {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
           {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={schedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
-          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} logAction={logAction} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} />}
           {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
           {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
@@ -1531,7 +1531,24 @@ function ItemEditForm({ item, onSave, manager }) {
 /* ============================================================
    FACILITY
    ============================================================ */
-function Facility({ items }) {
+const THAI_DAY_NOW = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+
+// นาทีตั้งแต่เที่ยงคืน จาก "HH:MM" — ใช้เทียบช่วงเวลาปัจจุบันกับตารางสอน
+function toMinutes_(hhmm) {
+  const [h, m] = String(hhmm || "0:0").split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function Facility({ items, schedule = [], pmSchedule = [], setTab }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60000); // อัปเดตสถานะทุก 1 นาที
+    return () => clearInterval(t);
+  }, []);
+  const nowDay = THAI_DAY_NOW[now.getDay()];
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
   const byLoc = useMemo(() => {
     const m = {};
     LOCATIONS.forEach((l) => { m[l.name] = { ...l, count: 0, ok: 0, damaged: 0 }; });
@@ -1539,27 +1556,97 @@ function Facility({ items }) {
       if (!m[i.loc]) m[i.loc] = { name: i.loc, owner: i.owner, count: 0, ok: 0, damaged: 0 };
       m[i.loc].count += 1; m[i.loc].ok += i.normal; m[i.loc].damaged += i.damaged;
     });
+
+    // สถานะสด: กำลังใช้งานอยู่ตอนนี้หรือไม่ ตามตารางสอน/ตารางใช้ห้องของสถานที่นั้น
+    Object.values(m).forEach((loc) => {
+      const todaysRows = schedule.filter((s) => s.loc === loc.name && s.day === nowDay);
+      const current = todaysRows.find((s) => {
+        const start = toMinutes_(s.start), end = toMinutes_(s.end);
+        return start !== null && end !== null && nowMin >= start && nowMin < end;
+      });
+      const next = todaysRows
+        .filter((s) => { const start = toMinutes_(s.start); return start !== null && start > nowMin; })
+        .sort((a, b) => toMinutes_(a.start) - toMinutes_(b.start))[0];
+      loc.current = current || null;
+      loc.next = next || null;
+
+      // สถิติการใช้งาน: จำนวนคาบ/สัปดาห์ ที่สถานที่นี้ถูกใช้ จากตารางทั้งหมด (ไม่ใช่แค่วันนี้)
+      const weeklyRows = schedule.filter((s) => s.loc === loc.name);
+      loc.periodsPerWeek = weeklyRows.length;
+      loc.hoursPerWeek = weeklyRows.reduce((sum, s) => sum + durationHrs(s.start, s.end), 0);
+
+      // นัดซ่อมบำรุงครั้งถัดไป: จาก pmSchedule ที่อ้างอิงชื่อสถานที่นี้ เลือกวันที่ใกล้ที่สุดที่ยังไม่ผ่าน
+      const upcoming = pmSchedule
+        .filter((p) => p.refName && p.refName.includes(loc.name) && p.nextDate)
+        .sort((a, b) => (a.nextDate < b.nextDate ? -1 : 1))
+        .find((p) => p.nextDate >= TODAY_ISO) || pmSchedule.find((p) => p.refName && p.refName.includes(loc.name));
+      loc.nextMaintenance = upcoming || null;
+    });
+
     return Object.values(m);
-  }, [items]);
+  }, [items, schedule, pmSchedule, nowDay, nowMin]);
+
+  const maxPeriods = Math.max(1, ...byLoc.map((l) => l.periodsPerWeek || 0));
 
   return (
     <div>
-      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="สรุปทรัพยากรแยกตามสถานที่จัดเก็บ / พื้นที่ใช้งาน" />
+      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="สถานะแบบสด ตามตารางใช้ห้อง พร้อมนัดซ่อมบำรุงและสถิติการใช้งาน" />
       <div className="grid grid-cols-2 gap-4">
-        {byLoc.map((l) => (
-          <div key={l.name} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${l.damaged > l.ok * 0.3 && l.ok > 0 ? C.crimson : C.navy}` }}>
-            <div className="flex items-center gap-2 mb-2">
-              <Building2 size={15} style={{ color: C.navy }} />
-              <span className="font-bold text-sm" style={{ color: C.ink }}>{l.name}</span>
+        {byLoc.map((l) => {
+          const inUse = !!l.current;
+          const utilPct = Math.round(((l.periodsPerWeek || 0) / maxPeriods) * 100);
+          return (
+            <div key={l.name} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${inUse ? C.gold : (l.damaged > l.ok * 0.3 && l.ok > 0 ? C.crimson : C.ok)}` }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Building2 size={15} style={{ color: C.navy }} className="shrink-0" />
+                  <span className="font-bold text-sm truncate" style={{ color: C.ink }}>{l.name}</span>
+                </div>
+                {inUse ? (
+                  <Pill fg={C.crimsonDeep} bg={C.badBg}><span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ background: C.crimson }} />กำลังใช้งาน</Pill>
+                ) : (
+                  <Pill fg={C.ok} bg={C.okBg}>ว่าง</Pill>
+                )}
+              </div>
+              <div className="text-xs mb-1" style={{ color: C.slate }}>ผู้ดูแล: {l.owner || "ยังไม่ระบุ"}</div>
+              {inUse ? (
+                <div className="text-xs mb-2" style={{ color: C.crimsonDeep }}>
+                  {l.current.subject || "ใช้งาน"} · {l.current.teacher || "-"} · {l.current.start}–{l.current.end}
+                </div>
+              ) : l.next ? (
+                <div className="text-xs mb-2" style={{ color: C.slate }}>คาบถัดไปวันนี้: {l.next.start} · {l.next.subject || "-"}</div>
+              ) : (
+                <div className="text-xs mb-2" style={{ color: C.mute }}>ไม่มีคาบใช้งานวันนี้แล้ว</div>
+              )}
+
+              <div className="flex items-center justify-between text-sm mb-3">
+                <div><span className="font-bold">{l.count}</span> <span className="text-xs" style={{ color: C.mute }}>รายการ</span></div>
+                <div style={{ color: C.ok }}><span className="font-bold">{l.ok}</span> <span className="text-xs">ใช้ได้</span></div>
+                <div style={{ color: C.crimson }}><span className="font-bold">{l.damaged}</span> <span className="text-xs">ชำรุด</span></div>
+              </div>
+
+              <div className="mb-3">
+                <div className="flex items-center justify-between text-xs mb-1" style={{ color: C.slate }}>
+                  <span>สถิติการใช้งาน</span>
+                  <span>{l.periodsPerWeek || 0} คาบ/สัปดาห์ · {l.hoursPerWeek.toFixed(1)} ชม./สัปดาห์</span>
+                </div>
+                <div className="h-1.5 w-full" style={{ background: C.line }}>
+                  <div className="h-1.5" style={{ width: `${utilPct}%`, background: C.navy }} />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-xs pt-2" style={{ borderTop: `1px dashed ${C.line}`, color: l.nextMaintenance ? C.warn : C.mute }}>
+                <Wrench size={12} className="shrink-0" />
+                {l.nextMaintenance
+                  ? <span>นัดซ่อมบำรุงถัดไป: <b>{l.nextMaintenance.nextDate}</b> ({l.nextMaintenance.cycle || "-"})</span>
+                  : <span>ยังไม่มีนัดซ่อมบำรุงล่วงหน้า</span>}
+                {setTab && (
+                  <button className="ml-auto underline" style={{ color: C.navy }} onClick={() => setTab("maintenance")}>ดูรายละเอียด</button>
+                )}
+              </div>
             </div>
-            <div className="text-xs mb-3" style={{ color: C.slate }}>ผู้ดูแล: {l.owner || "ยังไม่ระบุ"}</div>
-            <div className="flex items-center justify-between text-sm">
-              <div><span className="font-bold">{l.count}</span> <span className="text-xs" style={{ color: C.mute }}>รายการ</span></div>
-              <div style={{ color: C.ok }}><span className="font-bold">{l.ok}</span> <span className="text-xs">ใช้ได้</span></div>
-              <div style={{ color: C.crimson }}><span className="font-bold">{l.damaged}</span> <span className="text-xs">ชำรุด</span></div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1712,14 +1799,29 @@ function durationHrs(start, end) {
   return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
 }
 
-function ScheduleView({ user, schedule, setSchedule, staffList, logAction }) {
+function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction }) {
   const manager = canManage(user.role);
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
   const [conflict, setConflict] = useState(null); // { form, with }
+  const [budget, setBudget] = useState({ budgets: [], loaded: false });
 
   const mine = !manager && (user.role === "L1" || user.role === "L2");
   const rows = mine ? schedule.filter((s) => s.teacher === user.name) : schedule;
+
+  // งานอื่นที่หัวหน้ามอบหมาย (ไม่ใช่คาบสอน) — จาก Work Management, กรองเฉพาะที่ assign ให้ฉัน
+  const myOtherTasks = useMemo(
+    () => tasks.filter((t) => t.assignee === user.name && t.status !== "COMPLETED" && t.status !== "CANCELLED"),
+    [tasks, user.name]
+  );
+
+  // โครงการ/งบประมาณที่รับผิดชอบ — โหลดจาก Budget module เฉพาะตอนเป็นมุมมองส่วนตัว
+  useEffect(() => {
+    if (!mine || !API_URL) return;
+    loadBudgetData(user.id).then((d) => {
+      setBudget({ budgets: (d.budgets || []).filter((b) => b.owner === user.name), loaded: true });
+    }).catch(() => setBudget({ budgets: [], loaded: true }));
+  }, [mine, user.id, user.name]);
 
   const workload = useMemo(() => {
     const m = {};
@@ -1787,6 +1889,47 @@ function ScheduleView({ user, schedule, setSchedule, staffList, logAction }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {mine && (myOtherTasks.length > 0 || budget.budgets.length > 0) && (
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          {myOtherTasks.length > 0 && (
+            <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5" style={{ color: C.navy }}>
+                <ClipboardList size={14} /> งานอื่นที่ได้รับมอบหมาย
+              </h3>
+              <div className="space-y-2">
+                {myOtherTasks.map((t) => (
+                  <div key={t.id} className="px-3 py-2 flex items-center justify-between gap-2" style={{ border: `1px solid ${C.line}` }}>
+                    <div className="min-w-0">
+                      <div className="text-sm truncate" style={{ color: C.ink }}>{t.title}</div>
+                      <div className="text-xs" style={{ color: C.mute }}>{t.location || "-"}{t.dueDate ? ` · กำหนด ${t.dueDate}` : ""}</div>
+                    </div>
+                    <Pill fg={taskStatusDisplay(t).fg} bg={taskStatusDisplay(t).bg}>{taskStatusDisplay(t).label}</Pill>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {budget.budgets.length > 0 && (
+            <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5" style={{ color: C.navy }}>
+                <DollarSign size={14} /> งบประมาณ/โครงการที่รับผิดชอบ
+              </h3>
+              <div className="space-y-2">
+                {budget.budgets.map((b) => (
+                  <div key={b.id} className="px-3 py-2 flex items-center justify-between gap-2" style={{ border: `1px solid ${C.line}` }}>
+                    <div className="min-w-0">
+                      <div className="text-sm truncate" style={{ color: C.ink }}>{b.name}</div>
+                      <div className="text-xs" style={{ color: C.mute }}>{b.startDate || "-"} – {b.endDate || "-"}</div>
+                    </div>
+                    <div className="text-xs font-semibold shrink-0" style={{ color: C.navy }}>{b.amount.toLocaleString()} บาท</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2011,19 +2154,20 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
   const [showNew, setShowNew] = useState(false);
   const manage = canEdit(user.role) || canManage(user.role);
 
-  const submit = async ({ itemId, qty, symptom }) => {
+  const submit = async ({ itemId, qty, symptom, location }) => {
     const item = items.find((i) => i.id === itemId);
-    const rec = { id: `DM-${Date.now()}`, date: "2026-09-15", itemId, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name, severity: "ปานกลาง", status: "รอตรวจสอบ", action: "", cost: 0 };
+    const loc = location || item.loc || "";
+    const rec = { id: `DM-${Date.now()}`, date: "2026-09-15", itemId, itemCode: item.code, itemName: item.name, qty, symptom, location: loc, reporter: user.name, severity: "ปานกลาง", status: "รอตรวจสอบ", action: "", cost: 0 };
     setDamages((p) => [rec, ...p]);
-    logAction(`แจ้งชำรุด ${item.code} จำนวน ${qty}`);
+    logAction(`แจ้งชำรุด ${item.code} จำนวน ${qty} ที่ ${loc || "-"}`);
     setShowNew(false);
     try {
-      const result = await postToSheetsAwait("damage", { date: rec.date, itemCode: item.code, itemName: item.name, qty, symptom, reporter: user.name });
+      const result = await postToSheetsAwait("damage", { date: rec.date, itemCode: item.code, itemName: item.name, qty, symptom, location: loc, reporter: user.name });
       if (result.taskId) {
         setTasks((prev) => [{
           id: result.taskId, title: `ซ่อม/ตรวจสอบ: ${item.name} (${item.code})`, description: symptom,
           priority: "HIGH", status: "TODO", dueDate: "", dueTime: "", assignee: "", createdBy: user.name,
-          location: "", relatedResource: item.code, relatedFacility: "", relatedBorrowId: "",
+          location: loc, relatedResource: item.code, relatedFacility: loc, relatedBorrowId: "",
           relatedDamageId: result.damageId || "", taskType: "maintenance", comments: "",
           createdDate: new Date().toISOString(), completedDate: "",
         }, ...prev]);
@@ -2051,7 +2195,7 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: C.navy, color: C.white }}>
-                {["วันที่แจ้ง", "อุปกรณ์", "จำนวน", "อาการ", "ผู้แจ้ง", "ความรุนแรง", "สถานะ", ""].map((h) => (
+                {["วันที่แจ้ง", "อุปกรณ์", "สถานที่", "จำนวน", "อาการ", "ผู้แจ้ง", "ความรุนแรง", "สถานะ", ""].map((h) => (
                   <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>
                 ))}
               </tr>
@@ -2061,6 +2205,7 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
                 <tr key={d.id} style={{ borderTop: `1px solid ${C.line}` }}>
                   <td className="px-3 py-2 text-xs">{d.date}</td>
                   <td className="px-3 py-2 text-xs">{d.itemName} <span style={{ color: C.mute }}>({d.itemCode})</span></td>
+                  <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{d.location || "-"}</td>
                   <td className="px-3 py-2 text-xs">{d.qty}</td>
                   <td className="px-3 py-2 text-xs">{d.symptom}</td>
                   <td className="px-3 py-2 text-xs">{d.reporter}</td>
@@ -2099,17 +2244,37 @@ function DamageForm({ items, onSubmit }) {
   const [itemId, setItemId] = useState(items[0]?.id || "");
   const [qty, setQty] = useState(1);
   const [symptom, setSymptom] = useState("");
+  const [location, setLocation] = useState(items[0]?.loc || "");
+  const [locTouched, setLocTouched] = useState(false);
+
+  const pickItem = (e) => {
+    const id = e.target.value;
+    setItemId(id);
+    if (!locTouched) {
+      const it = items.find((i) => i.id === id);
+      setLocation(it?.loc || "");
+    }
+  };
+
   return (
     <div>
       <Field label="อุปกรณ์">
-        <select value={itemId} onChange={(e) => setItemId(e.target.value)} style={inputStyle}>
+        <select value={itemId} onChange={pickItem} style={inputStyle}>
           {items.map((i) => <option key={i.id} value={i.id}>{i.code} — {i.name}</option>)}
         </select>
+      </Field>
+      <Field label="สถานที่ (เติมอัตโนมัติจากตำแหน่งเก็บของอุปกรณ์ — แก้ไขได้ถ้าจุดที่ชำรุดไม่ตรง)">
+        <input
+          value={location}
+          onChange={(e) => { setLocTouched(true); setLocation(e.target.value); }}
+          style={inputStyle}
+          placeholder="เช่น สนามฟุตบอล"
+        />
       </Field>
       <Field label="จำนวนที่ชำรุด"><input type="number" min={1} value={qty} onChange={(e) => setQty(Number(e.target.value))} style={inputStyle} /></Field>
       <Field label="อาการ / รายละเอียด"><textarea rows={3} value={symptom} onChange={(e) => setSymptom(e.target.value)} style={inputStyle} /></Field>
       <div className="flex justify-end mt-2">
-        <Btn variant="crimson" onClick={() => onSubmit({ itemId, qty, symptom })} disabled={!symptom}>ส่งรายงานชำรุด</Btn>
+        <Btn variant="crimson" onClick={() => onSubmit({ itemId, qty, symptom, location })} disabled={!symptom}>ส่งรายงานชำรุด</Btn>
       </div>
     </div>
   );
