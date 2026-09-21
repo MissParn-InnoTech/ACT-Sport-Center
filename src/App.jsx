@@ -728,7 +728,7 @@ export default function App() {
             <span>{sheetsError || "ยังไม่ได้เชื่อมต่อกับ Google Sheet หลังบ้าน — ตอนนี้ใช้ข้อมูลตัวอย่างในเครื่อง"}</span>
           </div>
         )}
-        <main className="flex-1 p-4 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+        <main className="flex-1 p-4 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: "calc(4.5rem + env(safe-area-inset-bottom))" }}>
           {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
           {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
@@ -1032,7 +1032,7 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
 function BottomNav({ nav, tab, setTab }) {
   const items = nav.slice(0, 5); // primary items only — everything else lives in the drawer
   return (
-    <nav className="mobile-only shrink-0 flex items-stretch" style={{
+    <nav className="mobile-only bottom-nav-fixed shrink-0 flex items-stretch" style={{
       background: C.white, borderTop: `1px solid ${C.line}`,
       paddingBottom: "env(safe-area-inset-bottom)",
     }}>
@@ -2263,13 +2263,18 @@ function DamageForm({ items, onSubmit }) {
           {items.map((i) => <option key={i.id} value={i.id}>{i.code} — {i.name}</option>)}
         </select>
       </Field>
-      <Field label="สถานที่ (เติมอัตโนมัติจากตำแหน่งเก็บของอุปกรณ์ — แก้ไขได้ถ้าจุดที่ชำรุดไม่ตรง)">
-        <input
+      <Field label="สถานที่ (เติมอัตโนมัติจากตำแหน่งเก็บของอุปกรณ์ — เลือกใหม่ได้ถ้าจุดที่ชำรุดไม่ตรง)">
+        <select
           value={location}
           onChange={(e) => { setLocTouched(true); setLocation(e.target.value); }}
           style={inputStyle}
-          placeholder="เช่น สนามฟุตบอล"
-        />
+        >
+          <option value="">— เลือกสถานที่ —</option>
+          {location && !LOCATIONS.some((l) => l.name === location) && (
+            <option value={location}>{location} (จากข้อมูลเดิม)</option>
+          )}
+          {LOCATIONS.map((l) => <option key={l.code} value={l.name}>{l.name}</option>)}
+        </select>
       </Field>
       <Field label="จำนวนที่ชำรุด"><input type="number" min={1} value={qty} onChange={(e) => setQty(Number(e.target.value))} style={inputStyle} /></Field>
       <Field label="อาการ / รายละเอียด"><textarea rows={3} value={symptom} onChange={(e) => setSymptom(e.target.value)} style={inputStyle} /></Field>
