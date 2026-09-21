@@ -23,14 +23,12 @@ body {
   overflow-x: hidden;
 }
 
-/* the app shell fills whatever device it's on edge-to-edge — no fixed
-   "phone frame" width, no letterboxing. On very wide monitors it caps
-   out so lines of text don't stretch to unreadable widths, but that
-   cap is generous (1600px) and always full width below it. */
+/* the app shell always fills the exact width of whatever it's on —
+   phone, tablet, or desktop monitor — no fixed "phone frame" width,
+   no centering, no letterboxed margin at any screen size. */
 .app-shell {
   width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
+  max-width: none;
   height: 100dvh;
   min-height: 100dvh;
   overflow-x: hidden;
@@ -81,11 +79,8 @@ body {
    web app: a fixed left sidebar plus a flexible content column. */
 @media (min-width: 768px) {
   .app-shell-auth {
-    max-width: 1280px;
     flex-direction: row;
     box-shadow: none;
-    border-left: 1px solid rgba(255,255,255,0.06);
-    border-right: 1px solid rgba(255,255,255,0.06);
   }
   .mobile-only {
     display: none !important;
