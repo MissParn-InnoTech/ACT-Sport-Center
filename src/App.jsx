@@ -64,6 +64,14 @@ const FONT = "'Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,s
    ============================================================ */
 const API_URL = "https://script.google.com/macros/s/AKfycbyk-K8T2uIgWtyPeiltRbjzyyuuWFoA3al-9y-cJNW9ASgm3lSeRoesIbrF2Bhr9JW7lQ/exec";
 
+// ตัดคำนำหน้าชื่อ (นาย/นาง/น.ส./นางสาว/มิส/ม./ครู/คุณครู) และช่องว่างออก เพื่อเทียบ
+// ชื่อครูข้ามแหล่งข้อมูลที่สะกดคำนำหน้าไม่ตรงกัน (ชีตบุคลากร vs ชีตตารางสอน)
+function normTeacherName(s) {
+  return String(s || "")
+    .replace(/(นางสาว|น\.ส\.|นาย|นาง|มิสเตอร์|มิส|คุณครู|ครู|ม\.)/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
 function catCodeFromName(name) {
   const hit = CATEGORIES.find((c) => c.name === name);
   return hit ? hit.code : name;
@@ -155,7 +163,7 @@ async function loadBudgetData(teacherId) {
     budgets: (data.budgets || []).map((b) => ({
       id: b["ID"], name: b["ชื่อโครงการ"], owner: b["ผู้รับผิดชอบ"], dept: b["หน่วยงาน"],
       amount: Number(b["งบที่ได้รับ"]) || 0, startDate: fmtDate(b["วันที่เริ่ม"]), endDate: fmtDate(b["วันที่สิ้นสุด"]),
-      status: b["สถานะ"] || "active", approvedBy: b["ผู้อนุมัติ"],
+      status: b["สถานะ"] || "active", approvedBy: b["ผู้อนุมัติ"], code: b["เลขที่งบประมาณ"] || "",
     })),
     income: (data.income || []).map((i) => ({
       id: i["ID"], date: fmtDate(i["วันที่"]), type: i["ประเภท"], amount: Number(i["จำนวนเงิน"]) || 0,
@@ -653,9 +661,28 @@ export default function App() {
   useEffect(() => { if (!loading && !API_URL) window.storage?.set("damages", JSON.stringify(damages), true).catch(() => {}); }, [damages, loading]);
   useEffect(() => { if (!loading) window.storage?.set("actions", JSON.stringify(actionsLog), true).catch(() => {}); }, [actionsLog, loading]);
 
-  const handleLogin = (id) => {
+  const handleLogin = async (id, password) => {
+    // demo/sample accounts always work by ID alone, regardless of password —
+    // they're for showing off each role's view, not real accounts
     const demo = USERS.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
     if (demo) { setUser(demo); setTab("profile"); setLoginErr(""); return; }
+
+    // real staff: verify username + password server-side against "9.บุคลากร"
+    if (API_URL) {
+      try {
+        const result = await postToSheetsAwait("login", { username: id.trim(), password: password || "" });
+        const u = result.user;
+        const role = ["L0", "L1", "L2", "L3", "L4"].includes(u.role) ? u.role : "L1";
+        setUser({ id: u.id, name: u.name, role, dept: u.dept, title: u.dept, photoUrl: u.photoUrl || "", phone: u.phone || "" });
+        setTab("profile"); setLoginErr("");
+        return;
+      } catch (e) {
+        setLoginErr(e.message || "Username หรือ Password ไม่ถูกต้อง");
+        return;
+      }
+    }
+
+    // offline/demo fallback (no backend connected yet) — ID-only, same as before
     const s = staffList.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
     if (s) {
       const role = ["L0", "L1", "L2", "L3", "L4"].includes(s.level) ? s.level : "L1";
@@ -760,6 +787,8 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   const MASCOT_URL = "https://i.postimg.cc/hvB9N1n8/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-3.png";
   const MOBILE_BG_URL = "https://i.postimg.cc/90xFhcT9/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(6).png";
   const [navOpen, setNavOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const submit = () => onLogin(loginId, password);
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
       {/* top navbar — full-width on desktop; stays sensible when squeezed to mobile width */}
@@ -837,8 +866,8 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                 <div className="relative">
                   <User size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
                   <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && onLogin(loginId)}
-                    placeholder="Teacher ID เช่น T00125"
+                    onKeyDown={(e) => e.key === "Enter" && submit()}
+                    placeholder="Username เช่น T00125"
                     className="focus:border-orange-400 focus:ring-2 focus:ring-orange-400/25 transition-all duration-200"
                     style={{
                       width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
@@ -851,20 +880,21 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
                 <label className="block text-sm font-semibold mb-1.5" style={{ color: C.white }}>Password</label>
                 <div className="relative">
                   <Lock size={15} style={{ position: "absolute", left: 14, top: 14, color: "rgba(255,255,255,0.55)" }} />
-                  <input type="password" placeholder="Password" disabled
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submit()}
+                    placeholder="Password"
                     style={{
                       width: "100%", minHeight: 48, padding: "12px 12px 12px 38px", fontFamily: FONT, fontSize: 14,
                       background: "rgba(158,27,43,0.28)", border: "1px solid rgba(255,255,255,0.15)",
-                      color: "rgba(255,255,255,0.5)", outline: "none",
+                      color: C.white, outline: "none",
                     }} />
                 </div>
-                <div className="text-[11px] mt-2" style={{ color: "rgba(255,255,255,0.35)" }}>ระบบยืนยันตัวตนด้วยรหัสประจำตัวครูเท่านั้น — ยังไม่ต้องใช้รหัสผ่าน</div>
               </div>
 
               {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#FF9EAE" }}><AlertTriangle size={13} />{err}</div>}
 
               <div className="mt-2 md:mt-5 md:flex md:justify-end">
-                <button onClick={() => onLogin(loginId)}
+                <button onClick={submit}
                   className="w-full md:w-auto px-8 py-3 md:py-2.5 text-sm font-bold transition-all duration-200 active:scale-95 hover:brightness-110 hover:shadow-[0_0_28px_rgba(232,100,26,0.75)]"
                   style={{
                     minHeight: 48,
@@ -1807,7 +1837,10 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   const [budget, setBudget] = useState({ budgets: [], loaded: false });
 
   const mine = !manager && (user.role === "L1" || user.role === "L2");
-  const rows = mine ? schedule.filter((s) => s.teacher === user.name) : schedule;
+  // เทียบชื่อครูแบบตัดคำนำหน้าออกก่อน (นาย/น.ส./มิส/ม./ครู ฯลฯ) เพราะชื่อครูผู้สอนที่
+  // ดึงมาจากชีตตารางสอน (เช่น "ม.ชาญวิทย์ พึ่งอิ่ม") อาจสะกดคำนำหน้าไม่ตรงกับชื่อที่
+  // login เข้ามา (เช่น "นายชาญวิทย์ พึ่งอิ่ม" จากชีตบุคลากร)
+  const rows = mine ? schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name)) : schedule;
 
   // งานอื่นที่หัวหน้ามอบหมาย (ไม่ใช่คาบสอน) — จาก Work Management, กรองเฉพาะที่ assign ให้ฉัน
   const myOtherTasks = useMemo(
@@ -2660,7 +2693,7 @@ function TaskForm({ staffList, items, onSubmit }) {
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="กำหนดเสร็จ (วันที่)"><input type="date" value={form.dueDate} onChange={set("dueDate")} style={inputStyle} /></Field>
+        <Field label="กำหนดเสร็จ"><input type="date" value={form.dueDate} onChange={set("dueDate")} style={inputStyle} /></Field>
         <Field label="เวลา"><input type="time" value={form.dueTime} onChange={set("dueTime")} style={inputStyle} /></Field>
       </div>
       <Field label="สถานที่"><input value={form.location} onChange={set("location")} style={inputStyle} placeholder="เช่น สนามฟุตบอล" /></Field>
@@ -3171,6 +3204,8 @@ function BudgetView({ user, staffList, logAction }) {
   const [showNewBudget, setShowNewBudget] = useState(false);
   const [showIncome, setShowIncome] = useState(false);
   const [expenseFor, setExpenseFor] = useState(null);
+  const [confirmDelBudget, setConfirmDelBudget] = useState(null);
+  const [codeSearch, setCodeSearch] = useState("");
   const manager = canManage(user.role);
   const readOnly = user.role === "L4";
 
@@ -3213,6 +3248,12 @@ function BudgetView({ user, staffList, logAction }) {
     logAction(`${status} รายจ่าย: ${e.item}`);
     reload();
   };
+  const deleteBudget = async (b) => {
+    const r = await postToSheetsAwait("deleteBudget", { teacherId: user.id, id: b.id });
+    if (r.error) { alert(r.error); return; }
+    logAction(`ลบโครงการงบประมาณ: ${b.name}`);
+    setConfirmDelBudget(null); reload();
+  };
 
   return (
     <div>
@@ -3233,9 +3274,32 @@ function BudgetView({ user, staffList, logAction }) {
         </div>
       )}
 
+      {data.budgets.length > 0 && (
+        <div className="mb-4">
+          <Field label="ค้นหาด้วยเลขที่งบประมาณ">
+            <input
+              value={codeSearch}
+              onChange={(e) => setCodeSearch(e.target.value)}
+              placeholder="พิมพ์เลขที่งบประมาณ เช่น B2569-001"
+              style={{ ...inputStyle, maxWidth: 320 }}
+            />
+          </Field>
+          {codeSearch.trim() && (() => {
+            const hit = data.budgets.find((b) => b.code && b.code.toLowerCase().includes(codeSearch.trim().toLowerCase()));
+            return (
+              <div className="text-xs mt-1" style={{ color: hit ? C.ok : C.mute }}>
+                {hit ? `พบโครงการ: ${hit.name} (ผู้รับผิดชอบ: ${hit.owner})` : "ไม่พบโครงการที่มีเลขนี้"}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 mb-6">
         {data.budgets.length === 0 && <div className="col-span-2 p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>{data.isManager ? "ยังไม่มีโครงการงบประมาณในระบบ" : "คุณยังไม่ได้รับมอบหมายงบประมาณ/โครงการใด"}</div>}
-        {data.budgets.map((b) => {
+        {data.budgets
+          .filter((b) => !codeSearch.trim() || (b.code && b.code.toLowerCase().includes(codeSearch.trim().toLowerCase())))
+          .map((b) => {
           const spent = spentFor(b.id);
           const remain = b.amount - spent;
           const pct = b.amount ? Math.min(100, Math.round((spent / b.amount) * 100)) : 0;
@@ -3243,8 +3307,18 @@ function BudgetView({ user, staffList, logAction }) {
           return (
             <div key={b.id} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
               <div className="flex items-center justify-between mb-1">
-                <div className="text-sm font-bold" style={{ color: C.ink }}>{b.name}</div>
-                <Pill fg={remain >= 0 ? C.ok : C.bad} bg={remain >= 0 ? C.okBg : C.badBg}>{b.status}</Pill>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold" style={{ color: C.ink }}>{b.name}</div>
+                  {b.code && <div className="text-xs font-mono" style={{ color: C.mute }}>เลขที่ {b.code}</div>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Pill fg={remain >= 0 ? C.ok : C.bad} bg={remain >= 0 ? C.okBg : C.badBg}>{b.status}</Pill>
+                  {manager && (
+                    <button onClick={() => setConfirmDelBudget(b)} title="ลบโครงการ">
+                      <X size={14} style={{ color: C.crimson }} />
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="text-xs mb-2" style={{ color: C.mute }}>{b.dept} · ผู้รับผิดชอบ: {b.owner} · {b.startDate}–{b.endDate}</div>
               <div className="h-2 w-full mb-1" style={{ background: C.line }}>
@@ -3303,17 +3377,29 @@ function BudgetView({ user, staffList, logAction }) {
       {showNewBudget && <Modal title="สร้างโครงการงบประมาณ" onClose={() => setShowNewBudget(false)} wide><BudgetForm staffList={staffList} onSubmit={submitBudget} /></Modal>}
       {showIncome && <Modal title="บันทึกรายรับ" onClose={() => setShowIncome(false)}><IncomeForm onSubmit={submitIncome} /></Modal>}
       {expenseFor && <Modal title={`บันทึกการเบิกจ่าย — ${expenseFor.name}`} onClose={() => setExpenseFor(null)}><ExpenseForm onSubmit={submitExpense} /></Modal>}
+      {confirmDelBudget && (
+        <Modal title="ยืนยันการลบโครงการ" onClose={() => setConfirmDelBudget(null)}>
+          <div className="text-sm mb-4" style={{ color: C.ink }}>
+            ต้องการลบโครงการ "<strong>{confirmDelBudget.name}</strong>" ใช่หรือไม่? รายการเบิกจ่ายทั้งหมดของโครงการนี้จะถูกลบไปด้วย และกู้คืนไม่ได้
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Btn variant="ghost" onClick={() => setConfirmDelBudget(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => deleteBudget(confirmDelBudget)}>ลบโครงการ</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
 function BudgetForm({ staffList, onSubmit }) {
-  const [form, setForm] = useState({ name: "", owner: "", dept: "ศูนย์กีฬา", amount: 0, startDate: "2026-09-17", endDate: "", approvedBy: "" });
+  const [form, setForm] = useState({ name: "", budgetCode: "", owner: "", dept: "ศูนย์กีฬา", amount: 0, startDate: "2026-09-17", endDate: "", approvedBy: "" });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const valid = form.name.trim() && form.owner;
   return (
     <div className="grid grid-cols-2 gap-x-4">
       <div className="col-span-2"><Field label="ชื่อโครงการ *"><input value={form.name} onChange={set("name")} style={inputStyle} /></Field></div>
+      <div className="col-span-2"><Field label="เลขที่งบประมาณ"><input value={form.budgetCode} onChange={set("budgetCode")} placeholder="เช่น B2569-001" style={inputStyle} /></Field></div>
       <Field label="มอบหมายให้ (ผู้รับผิดชอบ) *">
         <select value={form.owner} onChange={set("owner")} style={inputStyle}>
           <option value="">— เลือกบุคลากร —</option>
