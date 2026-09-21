@@ -180,7 +180,9 @@ async function loadBudgetData(teacherId) {
 /* ============================================================
    WORK MANAGEMENT helpers
    ============================================================ */
-const TODAY_ISO = "2026-09-17";
+// วันนี้จริงตามเครื่อง/เบราว์เซอร์ของผู้ใช้ — ห้าม hardcode วันที่ตายตัว ไม่งั้นหน้าแรก/
+// ปฏิทิน/สถานะเกินกำหนด จะค้างอยู่ที่วันเดิมตลอดไปไม่ขยับตามวันจริง
+const TODAY_ISO = new Date().toISOString().slice(0, 10);
 const PRIORITY_META = {
   CRITICAL: { label: "วิกฤต", fg: "#FFFFFF", bg: "#B91C3C" },
   HIGH: { label: "สูง", fg: "#B91C3C", bg: "#FBEAEC" },
@@ -2936,7 +2938,7 @@ function buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly,
   });
 
   // schedule repeats weekly — project onto -1..+6 weeks from today for a usable calendar window
-  const base = new Date(2026, 8, 17); // 2026-09-17, Thursday — matches TODAY_ISO
+  const base = new Date(); // วันนี้จริง
   const monday = new Date(base); monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
   for (let w = -1; w <= 6; w++) {
     schedule.forEach((s) => {
@@ -2946,7 +2948,8 @@ function buildCalendarEvents({ tasks, schedule, orgEvents, pmSchedule, mineOnly,
       const start = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.start);
       const end = combineDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, s.end);
       if (!start) return;
-      events.push({ id: `S-${s.id}-${w}`, title: `🏟️ ${s.subject} — ${s.teacher}`, start, end: end || start, allDay: false, layer: "schedule", raw: s });
+      // ปฏิทินกลางใส่แค่ชื่อกีฬา/ห้อง พอ ไม่ต้องพ่วงชื่อครูหรือรายละเอียดอื่น (ยาวเกินไป)
+      events.push({ id: `S-${s.id}-${w}`, title: `🏟️ ${s.subject || s.loc || "-"}`, start, end: end || start, allDay: false, layer: "schedule", raw: s });
     });
   }
 
@@ -3588,8 +3591,8 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
   const myCompleted = myTasks.filter((t) => t.status === "COMPLETED").length;
   const completionPct = myTasks.length ? Math.round((myCompleted / myTasks.length) * 100) : 0;
 
-  // week strip — Mon..Sun of the current week, anchored on TODAY (2026-09-17, Thu)
-  const todayDate = new Date(2026, 8, 17);
+  // week strip — Mon..Sun of the current week, anchored on วันนี้จริง
+  const todayDate = new Date();
   const monday = new Date(todayDate); monday.setDate(todayDate.getDate() - ((todayDate.getDay() + 6) % 7));
   const weekDays = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
   const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
