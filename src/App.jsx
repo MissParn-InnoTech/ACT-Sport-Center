@@ -117,7 +117,7 @@ async function loadFromSheets() {
     id: `SC-${r._row}`, _row: r._row, day: r["วัน"], start: fmtTime(r["เวลาเริ่ม"]), end: fmtTime(r["เวลาจบ"]),
     subject: r["วิชา / กิจกรรม"] || "", teacher: r["ครูผู้สอน"] || "", loc: r["สถานที่"] || "",
     group: r["ระดับชั้น / กลุ่ม"] || "", equipment: r["อุปกรณ์ที่ใช้"] || "", qty: r["จำนวนที่ใช้"] || "", note: r["หมายเหตุ"] || "",
-  })).filter((s) => s.day); // skip fully blank template rows
+  })).filter((s) => isValidSheetValue(s.day) && isValidSheetValue(s.start)); // skip error rows and blank template rows
   const tasks = (data.tasks || []).map((r) => ({
     id: r["ID"], _row: r._row, title: r["Title"] || "", description: r["Description"] || "",
     priority: r["Priority"] || "NORMAL", status: r["Status"] || "TODO",
@@ -132,7 +132,7 @@ async function loadFromSheets() {
     id: r["ID"], title: r["ชื่องาน"] || "", start: fmtDate(r["วันที่เริ่ม"]), end: fmtDate(r["วันที่สิ้นสุด"]) || fmtDate(r["วันที่เริ่ม"]),
     allDay: r["ทั้งวัน"] === "TRUE" || r["ทั้งวัน"] === true, dept: r["หน่วยงานเจ้าของ"] || "", owner: r["ผู้รับผิดชอบ"] || "",
     loc: r["สถานที่"] || "", description: r["รายละเอียด"] || "", status: r["สถานะ"] || "scheduled",
-  }));
+  })).filter((e) => isValidSheetValue(e.start) && isValidSheetValue(e.title)); // skip error rows
   const repairs = (data.repairs || []).map((r) => ({
     id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", date: fmtDate(r["วันที่ซ่อม"]),
     description: r["รายละเอียด"] || "", cost: Number(r["ค่าใช้จ่าย"]) || 0, owner: r["ผู้รับผิดชอบ"] || "",
@@ -141,7 +141,7 @@ async function loadFromSheets() {
   const pmSchedule = (data.pmSchedule || []).map((r) => ({
     id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", cycle: r["รอบซ่อม"] || "",
     nextDate: fmtDate(r["วันนัดถัดไป"]), owner: r["ผู้รับผิดชอบ"] || "", note: r["หมายเหตุ"] || "",
-  }));
+  })).filter((p) => isValidSheetValue(p.nextDate) && isValidSheetValue(p.refName)); // skip error rows
   const docs = (data.docs || []).map((r) => ({
     id: r["ID"], title: r["ชื่อเอกสาร"] || "", category: r["หมวดหมู่"] || "อื่นๆ", url: r["ลิงก์ไฟล์"] || "",
     uploadedBy: r["อัปโหลดโดย"] || "", updatedDate: fmtDate(r["วันที่อัปเดต"]), version: r["เวอร์ชัน"] || "1",
@@ -152,6 +152,17 @@ function fmtTime(v) {
   if (!v) return "";
   if (typeof v === "string") return v;
   try { const d = new Date(v); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; } catch { return String(v); }
+}
+
+// ตรวจสอบว่าเป็นค่าข้อมูลจาก Google Sheets ที่เสียหายหรือเป็น error formula
+function isValidSheetValue(v) {
+  if (!v) return false;
+  const str = String(v).trim();
+  // ตัดทิ้งค่า #N/A, #VALUE!, #DIV/0! และ error อื่นๆ จาก Sheets
+  if (str.startsWith("#")) return false;
+  // ตัดทิ้งค่าว่างหรือ "-"
+  if (str === "" || str === "-") return false;
+  return true;
 }
 
 async function loadBudgetData(teacherId) {
