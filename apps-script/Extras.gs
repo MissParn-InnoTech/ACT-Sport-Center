@@ -230,8 +230,8 @@ function testExtras() {
    การจัดการรหัสผ่าน
    - เก็บรหัสผ่านแบบเข้ารหัสทางเดียว (SHA-256 + salt) ในแท็บ "บัญชีรหัสผ่าน"
      (ไม่มีใครอ่านรหัสผ่านจริงได้ แม้เปิดชีต)
-   - บัญชีที่ยังไม่เคยตั้งรหัสใหม่ ใช้ Username/Password เดิมในแท็บ "User"
-   - เมื่อตั้งรหัสใหม่แล้ว รหัสเดิมในแท็บ User จะถูกล้างทิ้ง
+   - บัญชีที่ยังไม่เคยตั้งรหัสใหม่ ใช้ Username/Password เดิม (แท็บ 9.บุคลากร / User)
+   - เมื่อตั้งรหัสใหม่แล้ว รหัสเดิมแบบข้อความธรรมดาจะถูกล้างทิ้ง
    ================================================================ */
 var PW_SHEET = 'บัญชีรหัสผ่าน';
 var PW_FIELDS = ['Username', 'Salt', 'Hash', 'บังคับเปลี่ยน', 'แก้ไขล่าสุด', 'แก้ไขโดย'];
@@ -261,12 +261,18 @@ function pwHash_(salt, password) {
   return h;
 }
 
+// ใช้ ID บุคลากรเป็นกุญแจหลัก (ผู้ใช้อาจพิมพ์ Username หรือ ID ก็ได้)
+function pwCanon_(username) {
+  const s = pwStaff_(username);
+  return s && s.id ? s.id : String(username || '').trim();
+}
+
 function pwFindRecord_(username) {
   const sh = pwSheet_();
   const last = sh.getLastRow();
   if (last < 2) return null;
   const vals = sh.getRange(2, 1, last - 1, PW_FIELDS.length).getValues();
-  const key = pwNorm_(username);
+  const key = pwNorm_(pwCanon_(username));
   for (let i = 0; i < vals.length; i++) {
     if (pwNorm_(vals[i][0]) === key) {
       return { row: i + 2, username: String(vals[i][0]), salt: String(vals[i][1]), hash: String(vals[i][2]), mustChange: vals[i][3] === true || String(vals[i][3]).toUpperCase() === 'TRUE' };
@@ -276,6 +282,7 @@ function pwFindRecord_(username) {
 }
 
 function pwWriteRecord_(username, password, mustChange, by) {
+  username = pwCanon_(username);
   const sh = pwSheet_();
   const salt = Utilities.getUuid();
   const row = [String(username), salt, pwHash_(salt, password), !!mustChange, new Date(), String(by || '')];
@@ -285,17 +292,22 @@ function pwWriteRecord_(username, password, mustChange, by) {
   pwClearLegacy_(username);
 }
 
-// แท็บ User: หัวตารางอยู่แถวที่ 2 (มีคอลัมน์ ID / Username / Password)
-function pwLegacyTable_() {
-  const sh = extraSpreadsheet_().getSheetByName('User');
-  if (!sh || sh.getLastRow() < 3) return null;
-  const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
-  for (let r = 0; r < Math.min(5, vals.length); r++) {
-    const head = vals[r].map(function (h) { return String(h).trim(); });
-    const iu = head.indexOf('Username'), ip = head.indexOf('Password');
-    if (iu >= 0 && ip >= 0) return { sh: sh, vals: vals, headRow: r, iu: iu, ip: ip, iid: head.indexOf('ID') };
-  }
-  return null;
+// ตารางที่เก็บ Username/Password เดิม (แบบข้อความธรรมดา): แท็บ 9.บุคลากร และ/หรือ แท็บ User
+// หาแถวหัวตารางเอง (อยู่ภายใน 5 แถวแรก)
+function pwLegacyTables_() {
+  const ss = extraSpreadsheet_();
+  const out = [];
+  ['9.บุคลากร', 'User'].forEach(function (name) {
+    const sh = ss.getSheetByName(name);
+    if (!sh || sh.getLastRow() < 2) return;
+    const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
+    for (let r = 0; r < Math.min(5, vals.length); r++) {
+      const head = vals[r].map(function (h) { return String(h).trim(); });
+      const iu = head.indexOf('Username'), ip = head.indexOf('Password');
+      if (iu >= 0 && ip >= 0) { out.push({ sh: sh, vals: vals, headRow: r, iu: iu, ip: ip, iid: head.indexOf('ID') }); return; }
+    }
+  });
+  return out;
 }
 
 function pwLegacyRow_(t, username) {
@@ -308,17 +320,19 @@ function pwLegacyRow_(t, username) {
 }
 
 function pwLegacyCheck_(username, password) {
-  const t = pwLegacyTable_();
-  if (!t) return false;
-  const r = pwLegacyRow_(t, username);
-  return r >= 0 && String(t.vals[r][t.ip]) !== '' && String(t.vals[r][t.ip]) === String(password);
+  const ts = pwLegacyTables_();
+  for (let i = 0; i < ts.length; i++) {
+    const r = pwLegacyRow_(ts[i], username);
+    if (r >= 0) { const pv = String(ts[i].vals[r][ts[i].ip]); return pv !== '' && pv === String(password); }
+  }
+  return false;
 }
 
 function pwClearLegacy_(username) {
-  const t = pwLegacyTable_();
-  if (!t) return;
-  const r = pwLegacyRow_(t, username);
-  if (r >= 0) t.sh.getRange(r + 1, t.ip + 1).setValue('(ตั้งรหัสใหม่แล้ว)');
+  pwLegacyTables_().forEach(function (t) {
+    const r = pwLegacyRow_(t, username);
+    if (r >= 0) t.sh.getRange(r + 1, t.ip + 1).setValue('(ตั้งรหัสใหม่แล้ว)');
+  });
 }
 
 // ตรวจรหัสผ่าน: ถ้ามีรหัสใหม่ใช้ hash, ถ้าไม่มีใช้รหัสเดิมในแท็บ User
@@ -337,22 +351,22 @@ function pwThrottle_(username, failed) {
   if (failed) cache.put(key, String(n + 1), 600); else cache.remove(key);
 }
 
-// ข้อมูลบุคลากรจากแท็บ 9.บุคลากร
+// ข้อมูลบุคลากรจากแท็บ 9.บุคลากร (จับคู่ด้วย ID หรือ Username)
 function pwStaff_(username) {
-  const sh = extraFindSheet_(['ID', 'ชื่อ', 'Level']);
+  const sh = extraSpreadsheet_().getSheetByName('9.บุคลากร') || extraFindSheet_(['ID', 'ชื่อ', 'Level']);
   if (!sh) return null;
   const vals = sh.getDataRange().getDisplayValues();
   const head = vals[0].map(function (h) { return String(h).trim(); });
   const col = function (names) { for (let i = 0; i < names.length; i++) { const k = head.indexOf(names[i]); if (k >= 0) return k; } return -1; };
-  const c = { id: col(['ID']), name: col(['ชื่อ']), dept: col(['หน่วยงาน']), role: col(['หน้าที่']), phone: col(['เบอร์โทร']), level: col(['Level']), photo: col(['รูปโปรไฟล์', 'รูป', 'Photo', 'photoUrl', 'PhotoURL']) };
-  let key = pwNorm_(username);
-  // Username ในแท็บ User อาจไม่ใช่ ID → แปลงเป็น ID ก่อน
-  const t = pwLegacyTable_();
-  if (t && t.iid >= 0) { const r = pwLegacyRow_(t, username); if (r >= 0) key = pwNorm_(t.vals[r][t.iid]); }
+  const c = { id: col(['ID']), user: col(['Username']), prefix: col(['นำหน้า', 'คำนำหน้า']), name: col(['ชื่อ']), dept: col(['หน่วยงาน']), role: col(['หน้าที่']), phone: col(['เบอร์โทร']), level: col(['Level']), photo: col(['รูปโปรไฟล์', 'Picture', 'รูป', 'photoUrl']) };
+  const key = pwNorm_(username);
   for (let r = 1; r < vals.length; r++) {
-    if (pwNorm_(vals[r][c.id]) === key) {
-      const g = function (k) { return c[k] >= 0 ? String(vals[r][c[k]]).trim() : ''; };
-      return { id: g('id'), name: g('name'), dept: g('dept'), title: g('role'), phone: g('phone'), role: g('level') || 'L1', photoUrl: g('photo') };
+    const g = function (k) { return c[k] >= 0 ? String(vals[r][c[k]]).trim() : ''; };
+    if (pwNorm_(g('id')) === key || (c.user >= 0 && pwNorm_(g('user')) === key)) {
+      let name = g('name');
+      const pre = g('prefix');
+      if (pre && name.indexOf(pre) !== 0) name = pre + name;
+      return { id: g('id'), name: name, dept: g('dept'), title: g('role'), phone: g('phone'), role: g('level') || 'L1', photoUrl: g('photo') };
     }
   }
   return null;
@@ -407,8 +421,8 @@ function pwAdminReset_(p) {
 
 /* ทดสอบใน editor: ตรวจว่าเจอแท็บ User / 9.บุคลากร (ไม่เปลี่ยนรหัสใคร) */
 function testPasswords() {
-  const t = pwLegacyTable_();
-  Logger.log('แท็บ User: ' + (t ? 'พบ (' + (t.vals.length - t.headRow - 1) + ' แถว)' : 'ไม่พบ'));
+  const ts = pwLegacyTables_();
+  Logger.log('ตาราง Username/Password เดิม: ' + ts.map(function (t) { return t.sh.getName(); }).join(', '));
   Logger.log('แท็บบุคลากร: ' + (extraFindSheet_(['ID', 'ชื่อ', 'Level']) ? 'พบ' : 'ไม่พบ'));
   Logger.log('แท็บ ' + PW_SHEET + ': ' + (pwSheet_().getLastRow() - 1) + ' บัญชีที่ตั้งรหัสใหม่แล้ว');
 }

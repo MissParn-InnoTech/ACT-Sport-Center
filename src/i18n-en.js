@@ -21,6 +21,7 @@ export const EN = {
   "รหัสผ่านปัจจุบันไม่ถูกต้อง": "Current password is incorrect",
   "รหัสผ่านของหัวหน้าไม่ถูกต้อง": "Head's password is incorrect",
   "ยืนยันตัวตนหัวหน้าไม่สำเร็จ": "Could not verify the head's identity",
+  "กรุณากรอก Username และ Password": "Please enter your username and password",
   "ใส่รหัสผ่านผิดหลายครั้ง กรุณารอ 10 นาทีแล้วลองใหม่": "Too many wrong attempts. Please wait 10 minutes and try again.",
   // days / short labels
   "จ": "Mon", "อ": "Tue", "พ": "Wed", "พฤ": "Thu", "ศ": "Fri", "ส": "Sat", "อา": "Sun",
