@@ -4007,7 +4007,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
     user.role !== "L0" && { key: "dashboard", label: "หน้าหลัก", icon: LayoutDashboard, desc: "ภาพรวมของคุณวันนี้" },
     user.role !== "L0" && { key: "tasks", label: "งานของฉัน", icon: ClipboardList, desc: `${myTasks.length} งานทั้งหมด${myOverdue ? ` · ${myOverdue} เกินกำหนด` : ""}` },
     user.role !== "L0" && { key: "calendar", label: "ปฏิทิน", icon: CalendarClock, desc: "งาน ตารางสอน และกิจกรรมทั้งหมด" },
-    (user.role === "L1" || user.role === "L2") && { key: "schedule", label: "ตารางสอนของฉัน", icon: CalendarDays, desc: `${myPeriods} คาบ/สัปดาห์` },
+    (user.role === "L1" || user.role === "L2" || user.role === "L3") && { key: "schedule", label: "ตารางสอนของฉัน", icon: CalendarDays, desc: `${myPeriods} คาบ/สัปดาห์` },
     { key: "borrow", label: "ยืม–คืนอุปกรณ์", icon: ArrowLeftRight, desc: "ยืมหรือคืนอุปกรณ์" },
     user.role !== "L0" && { key: "budget", label: user.role === "L3" || user.role === "L4" ? "งบประมาณ" : "งบของฉัน", icon: DollarSign, desc: "ดูโครงการและงบที่รับผิดชอบ" },
   ].filter(Boolean);
@@ -4119,15 +4119,199 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
       )}
 
       <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>ทางลัด</h3>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         {links.map((l) => <QuickAction key={l.key} icon={l.icon} title={l.label} desc={l.desc} onClick={() => setTab(l.key)} />)}
       </div>
+
+      {user.role !== "L0" && <PortfolioSection user={user} logAction={logAction} />}
 
       {showEditInfo && (
         <Modal title="แก้ไขข้อมูลส่วนตัว" onClose={() => setShowEditInfo(false)}>
           <EditProfileForm user={user} onChangePhoto={pick} uploading={uploading} onSave={saveInfo} onClose={() => setShowEditInfo(false)} />
         </Modal>
       )}
+    </div>
+  );
+}
+
+/* ============================================================
+   แฟ้มผลงานของฉัน — การพัฒนาตนเอง / รางวัลของตนเอง / การพาไปแข่งขัน /
+   รางวัลนักเรียนที่ดูแล  (เก็บในชีต "ผลงานบุคลากร" ผ่าน Extras.gs)
+   ============================================================ */
+const PORTFOLIO_TYPES = [
+  { key: "dev", label: "การพัฒนาตนเอง", icon: BookOpen, color: "#2E8FCB", hint: "อบรม สัมมนา ศึกษาดูงาน หลักสูตรออนไลน์" },
+  { key: "award", label: "รางวัลของตนเอง", icon: Trophy, color: "#B8791A", hint: "รางวัล เกียรติบัตร ผลงานดีเด่น" },
+  { key: "competition", label: "การพาไปแข่งขัน", icon: Users, color: C.crimson, hint: "พานักเรียนไปแข่งขันกีฬา/กิจกรรม" },
+  { key: "student", label: "รางวัลนักเรียนที่ดูแล", icon: Sparkles, color: "#37A868", hint: "รางวัลที่นักเรียนในความดูแลได้รับ" },
+];
+const PORTFOLIO_LEVELS = ["โรงเรียน", "เขต/อำเภอ", "จังหวัด", "ภาค", "ประเทศ", "นานาชาติ"];
+const portfolioType = (k) => PORTFOLIO_TYPES.find((t) => t.key === k) || PORTFOLIO_TYPES[0];
+
+function PortfolioSection({ user, logAction }) {
+  const [items, setItems] = useState([]);
+  const [state, setState] = useState("loading"); // loading | ready | error
+  const [filter, setFilter] = useState("ALL");
+  const [adding, setAdding] = useState(null);   // type key
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    postToSheetsAwait("listPortfolio", { teacherId: user.id, owner: user.name })
+      .then((r) => { if (alive) { setItems(r.items || []); setState("ready"); } })
+      .catch(() => alive && setState("error"));
+    return () => { alive = false; };
+  }, [user.id, user.name]);
+
+  const add = async (form) => {
+    const payload = { ...form, teacherId: user.id, owner: user.name };
+    const r = await postToSheetsAwait("addPortfolio", payload);
+    setItems((prev) => [{ ...payload, id: r.id }, ...prev]);
+    logAction(`เพิ่มผลงาน (${portfolioType(form.type).label}): ${form.title}`);
+    setAdding(null);
+  };
+  const del = async (it) => {
+    await postToSheetsAwait("deletePortfolio", { id: it.id, teacherId: user.id });
+    setItems((prev) => prev.filter((x) => x.id !== it.id));
+    setConfirmDel(null);
+  };
+
+  const shown = items
+    .filter((it) => filter === "ALL" || it.type === filter)
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+  return (
+    <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold flex items-center gap-1.5" style={{ color: C.navy }}><Trophy size={14} /> แฟ้มผลงานของฉัน</h3>
+        <span className="text-xs" style={{ color: C.mute }}>{items.length} รายการ</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        {PORTFOLIO_TYPES.map((t) => {
+          const Icon = t.icon;
+          const n = items.filter((it) => it.type === t.key).length;
+          const active = filter === t.key;
+          return (
+            <div key={t.key} className="p-3 flex items-center gap-2.5 cursor-pointer" onClick={() => setFilter(active ? "ALL" : t.key)}
+              style={{ background: active ? t.color : C.paper, border: `1px solid ${active ? t.color : C.line}`, borderLeft: `4px solid ${t.color}` }}>
+              <Icon size={18} style={{ color: active ? C.white : t.color }} />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold truncate" style={{ color: active ? C.white : C.ink }}>{t.label}</div>
+                <div className="text-[11px]" style={{ color: active ? "rgba(255,255,255,0.8)" : C.mute }}>{n} รายการ</div>
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); setAdding(t.key); }} disabled={state === "error"}
+                className="w-7 h-7 flex items-center justify-center shrink-0" title={`เพิ่ม${t.label}`}
+                style={{ background: active ? C.white : t.color, color: active ? t.color : C.white, opacity: state === "error" ? 0.4 : 1 }}>
+                <Plus size={14} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {state === "loading" && <div className="text-xs text-center py-4" style={{ color: C.mute }}>กำลังโหลดผลงาน…</div>}
+      {state === "error" && (
+        <div className="text-xs p-3" style={{ background: C.warnBg, color: C.warn }}>
+          ยังเชื่อมต่อแฟ้มผลงานไม่ได้ — ต้องอัปเดตไฟล์ Extras.gs ในโปรเจกต์ Apps Script ครุภัณฑ์และ Deploy เวอร์ชันใหม่ก่อน
+        </div>
+      )}
+      {state === "ready" && shown.length === 0 && (
+        <div className="text-xs text-center py-6" style={{ color: C.mute, border: `1px dashed ${C.line}` }}>
+          {filter === "ALL" ? "ยังไม่มีผลงาน — กดปุ่ม + ที่หมวดด้านบนเพื่อเพิ่ม" : `ยังไม่มี${portfolioType(filter).label}`}
+        </div>
+      )}
+      {state === "ready" && shown.length > 0 && (
+        <div className="space-y-2">
+          {shown.map((it) => {
+            const t = portfolioType(it.type);
+            return (
+              <div key={it.id} className="px-3 py-2.5" style={{ background: C.paper, borderLeft: `3px solid ${t.color}` }}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold" style={{ color: C.ink }}>{it.title}</div>
+                    <div className="text-[11px] mt-0.5" style={{ color: C.mute }}>
+                      <span style={{ color: t.color, fontWeight: 600 }}>{t.label}</span>
+                      {it.date ? ` · ${it.date}` : ""}{it.organizer ? ` · ${it.organizer}` : ""}{it.level ? ` · ระดับ${it.level}` : ""}{it.hours ? ` · ${it.hours} ชม.` : ""}
+                    </div>
+                  </div>
+                  <button onClick={() => setConfirmDel(it)} className="shrink-0"><X size={14} style={{ color: C.mute }} /></button>
+                </div>
+                {it.result && <div className="mt-1.5"><Pill fg={t.color} bg={C.white}>🏅 {it.result}</Pill></div>}
+                {it.students && <div className="text-xs mt-1.5" style={{ color: C.slate }}>นักเรียน: {it.students}</div>}
+                {it.detail && <div className="text-xs mt-1 whitespace-pre-line" style={{ color: C.slate }}>{it.detail}</div>}
+                {it.evidenceUrl && <a href={it.evidenceUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold inline-flex items-center gap-1 mt-1.5" style={{ color: C.navy }}>ดูหลักฐาน/เกียรติบัตร <ExternalLink size={11} /></a>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {adding && (
+        <Modal title={`เพิ่ม${portfolioType(adding).label}`} onClose={() => setAdding(null)} wide>
+          <PortfolioForm type={adding} onSubmit={add} />
+        </Modal>
+      )}
+      {confirmDel && (
+        <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
+          <p className="text-sm mb-4" style={{ color: C.ink }}>ลบผลงาน <b>{confirmDel.title}</b> ใช่หรือไม่?</p>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>ยกเลิก</Btn>
+            <Btn variant="crimson" onClick={() => del(confirmDel)} icon={X}>ยืนยันลบ</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function PortfolioForm({ type, onSubmit }) {
+  const t = portfolioType(type);
+  const [form, setForm] = useState({ type, date: new Date().toLocaleDateString("sv-SE"), title: "", organizer: "", level: "", result: "", students: "", hours: "", detail: "", evidenceUrl: "" });
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const urlOk = !form.evidenceUrl || /^https?:\/\//i.test(form.evidenceUrl.trim());
+  const withStudents = type === "competition" || type === "student";
+  const labels = {
+    dev: { title: "ชื่อหลักสูตร/การอบรม *", organizer: "หน่วยงานที่จัด", result: "ผลที่ได้ (เช่น เกียรติบัตร)" },
+    award: { title: "ชื่อรางวัล *", organizer: "หน่วยงานที่มอบ", result: "ผลรางวัล (เช่น ชนะเลิศ, ดีเด่น)" },
+    competition: { title: "ชื่อรายการแข่งขัน *", organizer: "หน่วยงานผู้จัด", result: "ผลการแข่งขัน (เช่น รองชนะเลิศอันดับ 1)" },
+    student: { title: "ชื่อรางวัล/รายการ *", organizer: "หน่วยงานที่มอบ/จัด", result: "รางวัลที่ได้ *" },
+  }[type];
+  const valid = form.title.trim() && urlOk && (type !== "student" || form.result.trim());
+  const submit = async () => {
+    setBusy(true);
+    try { await onSubmit(form); } catch (e) { alert(e.message || "บันทึกไม่สำเร็จ"); } finally { setBusy(false); }
+  };
+  return (
+    <div>
+      <div className="text-xs mb-3" style={{ color: C.mute }}>{t.hint}</div>
+      <div className="grid grid-cols-2 gap-x-4">
+        <div className="col-span-2"><Field label={labels.title}><input value={form.title} onChange={set("title")} style={inputStyle} /></Field></div>
+        <Field label="วันที่"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
+        {type === "dev" ? (
+          <Field label="จำนวนชั่วโมง"><input type="number" min="0" value={form.hours} onChange={set("hours")} style={inputStyle} /></Field>
+        ) : (
+          <Field label="ระดับ">
+            <select value={form.level} onChange={set("level")} style={inputStyle}><option value="">— เลือก —</option>{PORTFOLIO_LEVELS.map((l) => <option key={l}>{l}</option>)}</select>
+          </Field>
+        )}
+        <Field label={labels.organizer}><input value={form.organizer} onChange={set("organizer")} style={inputStyle} /></Field>
+        <Field label={labels.result}><input value={form.result} onChange={set("result")} style={inputStyle} /></Field>
+        {withStudents && (
+          <div className="col-span-2">
+            <Field label={type === "competition" ? "นักเรียนที่พาไป (ชื่อ/ชั้น/จำนวน)" : "นักเรียนที่ได้รับรางวัล (ชื่อ/ชั้น)"}>
+              <textarea rows={2} value={form.students} onChange={set("students")} style={inputStyle} placeholder="เช่น ด.ช.สมชาย ใจดี ม.2/3, ด.ญ.สมหญิง รักเรียน ม.2/5" />
+            </Field>
+          </div>
+        )}
+        <div className="col-span-2"><Field label="รายละเอียดเพิ่มเติม"><textarea rows={2} value={form.detail} onChange={set("detail")} style={inputStyle} /></Field></div>
+        <div className="col-span-2">
+          <Field label="ลิงก์หลักฐาน/เกียรติบัตร/รูปภาพ (ถ้ามี)">
+            <input value={form.evidenceUrl} onChange={set("evidenceUrl")} placeholder="https://drive.google.com/..." style={{ ...inputStyle, borderColor: urlOk ? C.line : C.bad }} />
+          </Field>
+        </div>
+      </div>
+      <div className="flex justify-end mt-2"><Btn onClick={submit} disabled={!valid || busy}>{busy ? "กำลังบันทึก..." : "บันทึก"}</Btn></div>
     </div>
   );
 }

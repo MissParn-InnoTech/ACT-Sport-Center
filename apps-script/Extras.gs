@@ -1,9 +1,12 @@
 /**
  * Extras.gs — วางเพิ่มในโปรเจกต์ Apps Script "ระบบครุภัณฑ์" (ตัวเดียวกับ Code.gs)
  *
- * เพิ่ม 2 action สำหรับหน้าเว็บ:
+ * เพิ่ม action สำหรับหน้าเว็บ:
  *   addDocLink         — คลังความรู้: เพิ่มเอกสารแบบ "วางลิงก์ URL" (ไม่ต้องอัปโหลดไฟล์)
  *   updateRepairReport — ซ่อมบำรุง: บันทึกรายงานผลการซ่อมจากหน่วยงานภายนอก
+ *   listPortfolio / addPortfolio / deletePortfolio
+ *                      — โปรไฟล์: แฟ้มผลงาน (พัฒนาตนเอง/รางวัล/พาไปแข่งขัน/รางวัลนักเรียน)
+ *                        เก็บในแท็บ "ผลงานบุคลากร" (สร้างให้อัตโนมัติ)
  *
  * ติดตั้ง (ครั้งเดียว):
  *   1) สร้างไฟล์ใหม่ชื่อ Extras แล้ววางโค้ดนี้
@@ -31,7 +34,13 @@ const REPAIR_REPORT_COLUMNS = {
 function handleExtraPost_(e) {
   let body;
   try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (err) { return null; }
-  const handlers = { addDocLink: extraAddDocLink_, updateRepairReport: extraUpdateRepairReport_ };
+  const handlers = {
+    addDocLink: extraAddDocLink_,
+    updateRepairReport: extraUpdateRepairReport_,
+    listPortfolio: extraListPortfolio_,
+    addPortfolio: extraAddPortfolio_,
+    deletePortfolio: extraDeletePortfolio_,
+  };
   const fn = body && handlers[body.action];
   if (!fn) return null; // ไม่ใช่ action ของไฟล์นี้ → ให้ Code.gs ทำงานต่อตามปกติ
   let out;
@@ -93,6 +102,71 @@ function extraUpdateRepairReport_(p) {
     if (col >= 0) sh.getRange(row, col + 1).setValue(values[k]);
   });
   return { id: id };
+}
+
+/* ---------- โปรไฟล์: แฟ้มผลงานบุคลากร ---------- */
+const PORTFOLIO_SHEET = 'ผลงานบุคลากร';
+const PORTFOLIO_FIELDS = [
+  ['id', 'ID'], ['teacherId', 'TeacherID'], ['owner', 'ชื่อผู้บันทึก'], ['type', 'ประเภท'],
+  ['date', 'วันที่'], ['title', 'ชื่อรายการ'], ['organizer', 'หน่วยงานผู้จัด/ผู้มอบ'], ['level', 'ระดับ'],
+  ['hours', 'จำนวนชั่วโมง'], ['result', 'ผลที่ได้/รางวัล'], ['students', 'นักเรียน'], ['detail', 'รายละเอียด'],
+  ['evidenceUrl', 'ลิงก์หลักฐาน'], ['createdAt', 'บันทึกเมื่อ'],
+];
+const PORTFOLIO_TYPE_LABEL = { dev: 'การพัฒนาตนเอง', award: 'รางวัลของตนเอง', competition: 'การพาไปแข่งขัน', student: 'รางวัลนักเรียนที่ดูแล' };
+
+function extraPortfolioSheet_() {
+  const ss = extraSpreadsheet_();
+  let sh = ss.getSheetByName(PORTFOLIO_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(PORTFOLIO_SHEET);
+    sh.getRange(1, 1, 1, PORTFOLIO_FIELDS.length).setValues([PORTFOLIO_FIELDS.map(function (f) { return f[1]; })]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  extraEnsureColumns_(sh, PORTFOLIO_FIELDS.map(function (f) { return f[1]; }));
+  return sh;
+}
+
+function extraListPortfolio_(p) {
+  const sh = extraPortfolioSheet_();
+  const v = sh.getDataRange().getDisplayValues();
+  const head = v[0].map(function (h) { return String(h).trim(); });
+  const labelToType = {};
+  Object.keys(PORTFOLIO_TYPE_LABEL).forEach(function (k) { labelToType[PORTFOLIO_TYPE_LABEL[k]] = k; });
+  const tid = String(p.teacherId || '');
+  const items = v.slice(1).map(function (row) {
+    const o = {};
+    PORTFOLIO_FIELDS.forEach(function (f) { const i = head.indexOf(f[1]); o[f[0]] = i >= 0 ? row[i] : ''; });
+    o.type = labelToType[o.type] || o.type;
+    return o;
+  }).filter(function (o) { return o.id && (!tid || String(o.teacherId) === tid); });
+  return { items: items };
+}
+
+function extraAddPortfolio_(p) {
+  if (!String(p.title || '').trim()) throw new Error('กรุณาใส่ชื่อรายการ');
+  if (!p.teacherId) throw new Error('ไม่พบรหัสครู');
+  const sh = extraPortfolioSheet_();
+  const id = 'PF-' + Date.now();
+  const rec = Object.assign({}, p, { id: id, createdAt: new Date(), type: PORTFOLIO_TYPE_LABEL[p.type] || p.type });
+  const obj = {};
+  PORTFOLIO_FIELDS.forEach(function (f) { obj[f[1]] = rec[f[0]] !== undefined ? rec[f[0]] : ''; });
+  extraAppendByHeader_(sh, obj);
+  return { id: id };
+}
+
+function extraDeletePortfolio_(p) {
+  const sh = extraPortfolioSheet_();
+  const v = sh.getDataRange().getDisplayValues();
+  const head = v[0];
+  const idCol = head.indexOf('ID'), tCol = head.indexOf('TeacherID');
+  for (let r = v.length - 1; r >= 1; r--) {
+    if (v[r][idCol] === String(p.id)) {
+      if (p.teacherId && String(v[r][tCol]) !== String(p.teacherId)) throw new Error('ลบได้เฉพาะผลงานของตนเอง');
+      sh.deleteRow(r + 1);
+      return { id: p.id };
+    }
+  }
+  throw new Error('ไม่พบรายการ');
 }
 
 /* ---------- helpers ---------- */
