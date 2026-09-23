@@ -140,6 +140,9 @@ async function loadFromSheets() {
     id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", date: fmtDate(r["วันที่ซ่อม"]),
     description: r["รายละเอียด"] || "", cost: Number(r["ค่าใช้จ่าย"]) || 0, owner: r["ผู้รับผิดชอบ"] || "",
     vendor: r["ร้าน/ช่าง"] || "", receiptUrl: r["ลิงก์ใบเสร็จ"] || "", status: r["สถานะ"] || "",
+    // รายงานผลการซ่อมจากหน่วยงานภายนอก (คอลัมน์เพิ่มโดย Extras.gs)
+    condition: r["สภาพหลังซ่อม"] || "", result: r["ผลการซ่อม"] || "", recommendation: r["คำแนะนำจากช่าง"] || "",
+    warrantyUntil: fmtDate(r["รับประกันถึง"]), reportUrl: r["ลิงก์รายงานผล"] || "",
   }));
   const pmSchedule = (data.pmSchedule || []).map((r) => ({
     id: r["ID"], ref: r["อ้างอิง"] || "", refName: r["ชื่ออุปกรณ์/สถานที่"] || "", cycle: r["รอบซ่อม"] || "",
@@ -3203,12 +3206,33 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
   const manager = canEdit(user.role) || canManage(user.role);
   const [showRepair, setShowRepair] = useState(false);
   const [showPM, setShowPM] = useState(false);
+  const [viewRepair, setViewRepair] = useState(null);   // ดูรายละเอียด/รายงานผล
+  const [reportFor, setReportFor] = useState(null);     // บันทึกผลซ่อมย้อนหลัง
 
+  const saveReport = async (id, report) => {
+    if (!hasRepairReport(report)) return true;
+    try {
+      await postToSheetsAwait("updateRepairReport", { id, ...report });
+      return true;
+    } catch (e) {
+      alert("บันทึกประวัติซ่อมแล้ว แต่บันทึกรายงานผลไม่สำเร็จ: " + (e.message || e) + "\n(ตรวจว่าได้ติดตั้ง Extras.gs ใน Apps Script แล้ว)");
+      return false;
+    }
+  };
   const addRepair = async (form) => {
-    const r = await postToSheetsAwait("addRepair", form);
-    setRepairs((prev) => [{ id: r.id, ...form }, ...prev]);
+    const { report, ...base } = form;
+    const r = await postToSheetsAwait("addRepair", base);
+    const ok = await saveReport(r.id, report);
+    setRepairs((prev) => [{ id: r.id, ...base, ...(ok ? report : {}) }, ...prev]);
     logAction(`บันทึกประวัติซ่อม: ${form.refName} (${form.cost.toLocaleString()} บาท)`);
     setShowRepair(false);
+  };
+  const updateReport = async (rep, report) => {
+    const ok = await saveReport(rep.id, report);
+    if (!ok) return;
+    setRepairs((prev) => prev.map((x) => (x.id === rep.id ? { ...x, ...report } : x)));
+    logAction(`บันทึกผลการซ่อม: ${rep.refName} — ${report.condition || report.status || ""}`);
+    setReportFor(null); setViewRepair(null);
   };
   const addPM = async (form) => {
     const r = await postToSheetsAwait("addPM", form);
@@ -3253,18 +3277,25 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: C.navy, color: C.white }}>
-                {["วันที่ซ่อม", "อุปกรณ์/สถานที่", "รายละเอียด", "ค่าใช้จ่าย", "ผู้รับผิดชอบ", "ร้าน/ช่าง"].map((h) => <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>)}
+                {["วันที่ซ่อม", "อุปกรณ์/สถานที่", "รายละเอียด", "ค่าใช้จ่าย", "ผู้รับผิดชอบ", "ร้าน/ช่าง", "ผลการซ่อม"].map((h) => <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold">{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {repairs.map((r) => (
-                <tr key={r.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                <tr key={r.id} onClick={() => setViewRepair(r)} className="cursor-pointer hover:bg-gray-50" style={{ borderTop: `1px solid ${C.line}` }}>
                   <td className="px-3 py-2 text-xs">{r.date}</td>
                   <td className="px-3 py-2 text-sm">{r.refName}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: C.slate }}>{r.description}</td>
                   <td className="px-3 py-2 text-xs font-mono">{r.cost.toLocaleString()} ฿</td>
                   <td className="px-3 py-2 text-xs">{r.owner}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: C.mute }}>{r.vendor || "-"}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {r.condition ? (
+                      <Pill fg={conditionTone(r.condition).fg} bg={conditionTone(r.condition).bg}>{r.condition}</Pill>
+                    ) : manager ? (
+                      <button onClick={(e) => { e.stopPropagation(); setReportFor(r); }} className="underline" style={{ color: C.crimson }}>+ บันทึกผล</button>
+                    ) : <span style={{ color: C.mute }}>-</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -3277,6 +3308,21 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
           <RepairForm items={items} staffList={staffList} onSubmit={addRepair} />
         </Modal>
       )}
+      {viewRepair && (
+        <Modal title="รายละเอียดการซ่อม" onClose={() => setViewRepair(null)} wide>
+          <RepairDetail r={viewRepair} />
+          {manager && (
+            <div className="flex justify-end mt-4">
+              <Btn onClick={() => { setReportFor(viewRepair); setViewRepair(null); }} icon={Pencil}>{viewRepair.condition ? "แก้ไขรายงานผล" : "บันทึกผลการซ่อม"}</Btn>
+            </div>
+          )}
+        </Modal>
+      )}
+      {reportFor && (
+        <Modal title={`รายงานผลการซ่อม — ${reportFor.refName}`} onClose={() => setReportFor(null)} wide>
+          <RepairReportFields initial={reportFor} onSubmit={(report) => updateReport(reportFor, report)} submitLabel="บันทึกผลการซ่อม" />
+        </Modal>
+      )}
       {showPM && (
         <Modal title="ตั้งนัดซ่อมล่วงหน้า" onClose={() => setShowPM(false)} wide>
           <PMForm items={items} staffList={staffList} onSubmit={addPM} />
@@ -3286,25 +3332,122 @@ function MaintenanceView({ user, items, repairs, setRepairs, pmSchedule, setPmSc
   );
 }
 
+const TODAY_STR = () => new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD ตามเวลาเครื่อง
+const REPAIR_STATUSES = ["เสร็จสิ้น", "กำลังซ่อม", "รออะไหล่", "ซ่อมไม่ได้"];
+const REPAIR_CONDITIONS = ["ใช้งานได้ปกติ", "ใช้งานได้บางส่วน", "ใช้งานไม่ได้ ต้องเปลี่ยนใหม่", "รอตรวจสอบซ้ำ"];
+function conditionTone(c) {
+  if (c === "ใช้งานได้ปกติ") return { fg: C.ok, bg: C.okBg };
+  if (c === "ใช้งานได้บางส่วน" || c === "รอตรวจสอบซ้ำ") return { fg: C.warn, bg: C.warnBg };
+  return { fg: C.bad, bg: C.badBg };
+}
+function hasRepairReport(r) {
+  return !!(r && (r.condition || r.result || r.recommendation || r.warrantyUntil || r.reportUrl || r.status));
+}
+
+// ส่วนรายงานผลการซ่อม — ใช้ทั้งตอนบันทึกใหม่ และตอนบันทึกผลย้อนหลัง
+function RepairReportFields({ initial = {}, onChange, onSubmit, submitLabel }) {
+  const [rep, setRep] = useState({
+    status: initial.status || "เสร็จสิ้น", condition: initial.condition || "", result: initial.result || "",
+    recommendation: initial.recommendation || "", warrantyUntil: initial.warrantyUntil || "", reportUrl: initial.reportUrl || "",
+  });
+  const set = (k) => (e) => setRep((r) => { const n = { ...r, [k]: e.target.value }; onChange && onChange(n); return n; });
+  const urlOk = !rep.reportUrl || /^https?:\/\//i.test(rep.reportUrl.trim());
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      <Field label="สถานะงานซ่อม">
+        <select value={rep.status} onChange={set("status")} style={inputStyle}>{REPAIR_STATUSES.map((x) => <option key={x}>{x}</option>)}</select>
+      </Field>
+      <Field label="สภาพหลังซ่อม">
+        <select value={rep.condition} onChange={set("condition")} style={inputStyle}>
+          <option value="">— ยังไม่ระบุ —</option>{REPAIR_CONDITIONS.map((x) => <option key={x}>{x}</option>)}
+        </select>
+      </Field>
+      <div className="col-span-2">
+        <Field label="ผลการซ่อม (ช่าง/หน่วยงานภายนอกแจ้งว่าอย่างไร)">
+          <textarea rows={3} value={rep.result} onChange={set("result")} style={inputStyle} placeholder="เช่น เปลี่ยนมอเตอร์ใหม่ ทดสอบแล้วใช้งานได้ปกติ / พบว่าแผงวงจรเสีย ต้องสั่งอะไหล่" />
+        </Field>
+      </div>
+      <div className="col-span-2">
+        <Field label="คำแนะนำเพิ่มเติมจากช่าง">
+          <textarea rows={2} value={rep.recommendation} onChange={set("recommendation")} style={inputStyle} placeholder="เช่น ควรทำความสะอาดทุก 3 เดือน / ไม่ควรใช้งานเกินวันละ 4 ชม. / ควรเปลี่ยนใหม่ภายใน 1 ปี" />
+        </Field>
+      </div>
+      <Field label="รับประกันงานซ่อมถึง"><input type="date" value={rep.warrantyUntil} onChange={set("warrantyUntil")} style={inputStyle} /></Field>
+      <Field label="ลิงก์ใบรายงาน/ใบเสร็จ (ถ้ามี)">
+        <input value={rep.reportUrl} onChange={set("reportUrl")} style={{ ...inputStyle, borderColor: urlOk ? C.line : C.bad }} placeholder="https://drive.google.com/..." />
+      </Field>
+      {onSubmit && (
+        <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(rep)} disabled={!urlOk}>{submitLabel || "บันทึก"}</Btn></div>
+      )}
+    </div>
+  );
+}
+
+function RepairDetail({ r }) {
+  const row = (label, value) => (
+    <div className="py-2" style={{ borderBottom: `1px solid ${C.line}` }}>
+      <div className="text-[11px] font-semibold" style={{ color: C.mute }}>{label}</div>
+      <div className="text-sm whitespace-pre-line" style={{ color: C.ink }}>{value || "-"}</div>
+    </div>
+  );
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-x-4">
+        {row("อุปกรณ์/สถานที่", r.refName)}
+        {row("วันที่ซ่อม", r.date)}
+        {row("ร้าน/ช่าง", r.vendor)}
+        {row("ค่าใช้จ่าย", `${(r.cost || 0).toLocaleString()} บาท`)}
+        {row("ผู้รับผิดชอบ", r.owner)}
+        {row("สถานะ", r.status)}
+      </div>
+      {row("รายละเอียด/อาการที่แจ้งซ่อม", r.description)}
+      <div className="mt-4 p-3" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-sm font-bold" style={{ color: C.navy }}>รายงานผลการซ่อม</div>
+          {r.condition && <Pill fg={conditionTone(r.condition).fg} bg={conditionTone(r.condition).bg}>{r.condition}</Pill>}
+        </div>
+        {row("ผลการซ่อม", r.result)}
+        {row("คำแนะนำเพิ่มเติมจากช่าง", r.recommendation)}
+        {row("รับประกันถึง", r.warrantyUntil)}
+        {r.reportUrl && <a href={r.reportUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold inline-flex items-center gap-1 mt-2" style={{ color: C.navy }}>เปิดใบรายงาน/ใบเสร็จ <ExternalLink size={12} /></a>}
+      </div>
+    </div>
+  );
+}
+
 function RepairForm({ items, staffList, onSubmit }) {
-  const [form, setForm] = useState({ ref: "", refName: "", date: "2026-09-17", description: "", cost: 0, owner: "", vendor: "", receiptUrl: "", status: "เสร็จสิ้น" });
+  const [form, setForm] = useState({ ref: "", refName: "", date: TODAY_STR(), description: "", cost: 0, owner: "", vendor: "", receiptUrl: "" });
+  const [report, setReport] = useState({ status: "เสร็จสิ้น" });
+  const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const pickItem = (e) => { const it = items.find((i) => i.code === e.target.value); setForm((f) => ({ ...f, ref: it?.code || "", refName: it ? `${it.name} (${it.code})` : "" })); };
   const valid = form.refName.trim() && form.date;
+  const submit = async () => {
+    setBusy(true);
+    try { await onSubmit({ ...form, status: report.status, receiptUrl: report.reportUrl || form.receiptUrl, report }); }
+    catch (e) { alert(e.message || "บันทึกไม่สำเร็จ"); }
+    finally { setBusy(false); }
+  };
   return (
-    <div className="grid grid-cols-2 gap-x-4">
-      <Field label="อุปกรณ์ (เลือกจากทะเบียน)">
-        <select onChange={pickItem} style={inputStyle}><option value="">— เลือก —</option>{items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}</select>
-      </Field>
-      <Field label="หรือพิมพ์ชื่ออุปกรณ์/สถานที่เอง *"><input value={form.refName} onChange={set("refName")} style={inputStyle} /></Field>
-      <Field label="วันที่ซ่อม"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
-      <Field label="ค่าใช้จ่าย (บาท)"><input type="number" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: Number(e.target.value) }))} style={inputStyle} /></Field>
-      <Field label="ผู้รับผิดชอบ">
-        <select value={form.owner} onChange={set("owner")} style={inputStyle}><option value="">— เลือก —</option>{staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
-      </Field>
-      <Field label="ร้าน/ช่าง"><input value={form.vendor} onChange={set("vendor")} style={inputStyle} /></Field>
-      <div className="col-span-2"><Field label="รายละเอียด"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field></div>
-      <div className="col-span-2 flex justify-end mt-2"><Btn onClick={() => onSubmit(form)} disabled={!valid}>บันทึก</Btn></div>
+    <div>
+      <div className="grid grid-cols-2 gap-x-4">
+        <Field label="อุปกรณ์ (เลือกจากทะเบียน)">
+          <select onChange={pickItem} style={inputStyle}><option value="">— เลือก —</option>{items.slice(0, 200).map((i) => <option key={i.id} value={i.code}>{i.code} — {i.name}</option>)}</select>
+        </Field>
+        <Field label="หรือพิมพ์ชื่ออุปกรณ์/สถานที่เอง *"><input value={form.refName} onChange={set("refName")} style={inputStyle} /></Field>
+        <Field label="วันที่ซ่อม"><input type="date" value={form.date} onChange={set("date")} style={inputStyle} /></Field>
+        <Field label="ค่าใช้จ่าย (บาท)"><input type="number" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: Number(e.target.value) }))} style={inputStyle} /></Field>
+        <Field label="ผู้รับผิดชอบ">
+          <select value={form.owner} onChange={set("owner")} style={inputStyle}><option value="">— เลือก —</option>{staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
+        </Field>
+        <Field label="ร้าน/ช่าง/หน่วยงานภายนอก"><input value={form.vendor} onChange={set("vendor")} style={inputStyle} /></Field>
+        <div className="col-span-2"><Field label="รายละเอียด/อาการที่แจ้งซ่อม"><textarea rows={2} value={form.description} onChange={set("description")} style={inputStyle} /></Field></div>
+      </div>
+      <div className="mt-2 mb-2 pt-3 text-sm font-bold" style={{ color: C.navy, borderTop: `1px solid ${C.line}` }}>
+        รายงานผลการซ่อมจากหน่วยงานภายนอก <span className="text-xs font-normal" style={{ color: C.mute }}>— กรอกทีหลังได้ ถ้ายังซ่อมไม่เสร็จ</span>
+      </div>
+      <RepairReportFields initial={report} onChange={setReport} />
+      <div className="flex justify-end mt-2"><Btn onClick={submit} disabled={!valid || busy}>{busy ? "กำลังบันทึก..." : "บันทึก"}</Btn></div>
     </div>
   );
 }
@@ -3354,12 +3497,19 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
 
   const filtered = docs.filter((d) => (cat === "ALL" || d.category === cat) && d.title.toLowerCase().includes(q.toLowerCase()));
 
-  const upload = async ({ title, category, file }) => {
+  const upload = async ({ title, category, file, url }) => {
     if (!API_URL) { alert("ยังไม่ได้เชื่อมต่อ Google Sheets backend"); return; }
-    const base64 = await docToBase64(file);
-    const r = await postToSheetsAwait("uploadDoc", { title, category, filename: file.name, mimeType: file.type, base64, uploadedBy: user.name });
-    setDocs((prev) => [{ id: r.id, title, category, url: r.url, uploadedBy: user.name, updatedDate: "2026-09-17", version: "1" }, ...prev]);
-    logAction(`อัปโหลดเอกสาร: ${title}`);
+    let r;
+    if (url) {
+      // วางลิงก์ (Google Drive / Docs / เว็บไซต์) — ไม่ต้องอัปโหลดไฟล์
+      r = await postToSheetsAwait("addDocLink", { title, category, url, uploadedBy: user.name });
+      r = { ...r, url };
+    } else {
+      const base64 = await docToBase64(file);
+      r = await postToSheetsAwait("uploadDoc", { title, category, filename: file.name, mimeType: file.type, base64, uploadedBy: user.name });
+    }
+    setDocs((prev) => [{ id: r.id, title, category, url: r.url, uploadedBy: user.name, updatedDate: new Date().toLocaleDateString("sv-SE"), version: "1" }, ...prev]);
+    logAction(`${url ? "เพิ่มลิงก์เอกสาร" : "อัปโหลดเอกสาร"}: ${title}`);
     setShowNew(false);
   };
   const del = async (d) => {
@@ -3406,7 +3556,7 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
         </div>
       )}
       {showNew && (
-        <Modal title="อัปโหลดเอกสาร" onClose={() => setShowNew(false)}>
+        <Modal title="เพิ่มเอกสาร" onClose={() => setShowNew(false)}>
           <DocUploadForm onSubmit={upload} />
         </Modal>
       )}
@@ -3426,18 +3576,49 @@ function KnowledgeBase({ user, docs, setDocs, logAction }) {
 function DocUploadForm({ onSubmit }) {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState(DOC_CATEGORIES[0]);
+  const [mode, setMode] = useState("file"); // "file" = อัปโหลดไฟล์, "url" = วางลิงก์
   const [file, setFile] = useState(null);
+  const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
-  const submit = async () => { setBusy(true); try { await onSubmit({ title, category, file }); } finally { setBusy(false); } };
+  const urlOk = /^https?:\/\/\S+$/i.test(url.trim());
+  const ready = title.trim() && (mode === "file" ? !!file : urlOk);
+  const submit = async () => {
+    setBusy(true);
+    try { await onSubmit(mode === "file" ? { title, category, file } : { title, category, url: url.trim() }); }
+    catch (e) { alert(e.message || "บันทึกไม่สำเร็จ"); }
+    finally { setBusy(false); }
+  };
+  const tab = (key, label, Icon) => (
+    <button type="button" onClick={() => setMode(key)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold"
+      style={mode === key ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate }}>
+      <Icon size={13} /> {label}
+    </button>
+  );
   return (
     <div>
       <Field label="ชื่อเอกสาร *"><input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} /></Field>
       <Field label="หมวดหมู่">
         <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>{DOC_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
       </Field>
-      <Field label="ไฟล์ *"><input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={inputStyle} /></Field>
+      <Field label="ที่มาของเอกสาร *">
+        <div className="flex mb-2" style={{ border: `1px solid ${C.line}` }}>
+          {tab("file", "อัปโหลดไฟล์", Upload)}
+          {tab("url", "วางลิงก์ URL", ExternalLink)}
+        </div>
+        {mode === "file" ? (
+          <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={inputStyle} />
+        ) : (
+          <>
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://drive.google.com/... หรือ https://docs.google.com/..."
+              style={{ ...inputStyle, borderColor: url && !urlOk ? C.bad : C.line }} />
+            <div className="text-[11px] mt-1" style={{ color: url && !urlOk ? C.bad : C.mute }}>
+              {url && !urlOk ? "ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://" : "ถ้าเป็นไฟล์ใน Google Drive ให้ตั้งค่าแชร์เป็น \"ทุกคนที่มีลิงก์\" ก่อน"}
+            </div>
+          </>
+        )}
+      </Field>
       <div className="flex justify-end mt-2">
-        <Btn onClick={submit} disabled={!title.trim() || !file || busy}>{busy ? "กำลังอัปโหลด..." : "อัปโหลด"}</Btn>
+        <Btn onClick={submit} disabled={!ready || busy}>{busy ? "กำลังบันทึก..." : mode === "file" ? "อัปโหลด" : "บันทึกลิงก์"}</Btn>
       </div>
     </div>
   );
