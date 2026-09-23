@@ -1752,7 +1752,7 @@ function Facility({ items, schedule = [], pmSchedule = [], setTab }) {
 
   return (
     <div>
-      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="สถานะแบบสด ตามตารางใช้ห้อง พร้อมนัดซ่อมบำรุงและสถิติการใช้งาน" />
+      <SectionHead eyebrow="FACILITY" title="สถานที่และผู้ดูแล" sub="สถานะ Real Time · ตารางใช้ห้อง · การนัดซ่อมบำรุงและสถิติ" />
       <div className="grid grid-cols-2 gap-4">
         {byLoc.map((l) => {
           const inUse = !!l.current;
