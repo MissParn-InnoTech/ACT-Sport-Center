@@ -178,7 +178,17 @@ function isValidSheetValue(v) {
 async function loadTeachingSchedule() {
   const data = await sheetsFetch(`${TEACHING_API_URL}?action=teachingSchedule`);
   if (!data || !Array.isArray(data.slots)) throw new Error(data?.error || "teachingSchedule not available");
+  // ข้ามแท็บที่ไม่ใช่ตารางรายคน: แท็บรวม (เช่น "รวมกีฬา") และแท็บที่ข้อมูลซ้ำกับครูคนก่อนทุกช่อง
+  // (เกิดจากสูตรอ้างอิงผิด เช่น ครูประจำระดับ ป.2–ม.6 ที่เหมือน ป.1) — ไม่งั้นตารางรวมกีฬาจะซ้ำหลายเท่า
+  const skip = new Set((data.teachers || []).filter((t) => /รวม/.test(t.sheetName || "")).map((t) => t.id));
+  const seenGrid = new Map();
+  (data.teachers || []).forEach((t) => {
+    if (skip.has(t.id)) return;
+    const sig = data.slots.filter((s) => s.teacherId === t.id).map((s) => `${s.dayIndex}:${s.period}:${s.raw}`).join("|");
+    if (sig && seenGrid.has(sig)) skip.add(t.id); else if (sig) seenGrid.set(sig, t.id);
+  });
   const rows = data.slots
+    .filter((s) => !skip.has(s.teacherId))
     .filter((s) => s.start && s.end && s.day)
     .map((s) => ({
       id: `TS-${s.id}`,
