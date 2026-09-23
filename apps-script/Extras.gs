@@ -19,9 +19,9 @@
  */
 
 // ไฟล์ "ระบบครุภัณฑ์ศูนย์กีฬา" — ใช้เมื่อสคริปต์ไม่ได้ผูกกับชีต (standalone)
-const EXTRA_SHEET_ID = '15KZQHTfveli-ntIKsal1kxke01vbgNxLpMSnLI-Vi7Q';
+var EXTRA_SHEET_ID = '15KZQHTfveli-ntIKsal1kxke01vbgNxLpMSnLI-Vi7Q';
 
-const REPAIR_REPORT_COLUMNS = {
+var REPAIR_REPORT_COLUMNS = {
   status: 'สถานะ',
   condition: 'สภาพหลังซ่อม',
   result: 'ผลการซ่อม',
@@ -105,14 +105,14 @@ function extraUpdateRepairReport_(p) {
 }
 
 /* ---------- โปรไฟล์: แฟ้มผลงานบุคลากร ---------- */
-const PORTFOLIO_SHEET = 'ผลงานบุคลากร';
-const PORTFOLIO_FIELDS = [
+var PORTFOLIO_SHEET = 'ผลงานบุคลากร';
+var PORTFOLIO_FIELDS = [
   ['id', 'ID'], ['teacherId', 'TeacherID'], ['owner', 'ชื่อผู้บันทึก'], ['type', 'ประเภท'],
   ['date', 'วันที่'], ['title', 'ชื่อรายการ'], ['organizer', 'หน่วยงานผู้จัด/ผู้มอบ'], ['level', 'ระดับ'],
   ['hours', 'จำนวนชั่วโมง'], ['result', 'ผลที่ได้/รางวัล'], ['students', 'นักเรียน'], ['detail', 'รายละเอียด'],
   ['evidenceUrl', 'ลิงก์หลักฐาน'], ['createdAt', 'บันทึกเมื่อ'],
 ];
-const PORTFOLIO_TYPE_LABEL = { dev: 'การพัฒนาตนเอง', award: 'รางวัลของตนเอง', competition: 'การพาไปแข่งขัน', student: 'รางวัลนักเรียนที่ดูแล' };
+var PORTFOLIO_TYPE_LABEL = { dev: 'การพัฒนาตนเอง', award: 'รางวัลของตนเอง', competition: 'การพาไปแข่งขัน', student: 'รางวัลนักเรียนที่ดูแล' };
 
 function extraPortfolioSheet_() {
   const ss = extraSpreadsheet_();
