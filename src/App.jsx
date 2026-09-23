@@ -215,6 +215,15 @@ function mergeSchedules(base, extra) {
   return [...base, ...extra.filter((s) => !seen.has(key(s)))];
 }
 
+// แคชตารางสอนไว้ในเครื่อง — เปิดแอพครั้งถัดไปเห็นตารางทันที แล้วค่อยอัปเดตจาก Sheets เบื้องหลัง
+const SCHEDULE_CACHE_KEY = "act.schedule.cache.v1";
+function readScheduleCache() {
+  try { return JSON.parse(localStorage.getItem(SCHEDULE_CACHE_KEY) || "null") || {}; } catch { return {}; }
+}
+function writeScheduleCache(patch) {
+  try { localStorage.setItem(SCHEDULE_CACHE_KEY, JSON.stringify({ ...readScheduleCache(), ...patch, savedAt: Date.now() })); } catch { /* ignore */ }
+}
+
 async function loadBudgetData(teacherId) {
   const data = await sheetsFetch(`${API_URL}?action=budgetData&teacherId=${encodeURIComponent(teacherId)}`);
   if (!data.ok && data.error && !("budgets" in data)) throw new Error(data.error || "load failed");
@@ -680,7 +689,7 @@ export default function App() {
   const [damages, setDamages] = useState([]);
   const [actionsLog, setActionsLog] = useState([]);
   const [staffList, setStaffList] = useState(STAFF);
-  const [schedule, setSchedule] = useState([]);
+  const [schedule, setSchedule] = useState(() => readScheduleCache().base || []);
   const [tasks, setTasks] = useState([]);
   const [orgEvents, setOrgEvents] = useState([]);
   const [repairs, setRepairs] = useState([]);
@@ -688,28 +697,36 @@ export default function App() {
   const [docs, setDocs] = useState([]);
 
   const [sheetsError, setSheetsError] = useState("");
-  const [scheduleWarnings, setScheduleWarnings] = useState([]);
+  const [scheduleWarnings, setScheduleWarnings] = useState(() => readScheduleCache().warnings || []);
+  // ตารางสอนจากชีตรายครู เก็บแยกจาก schedule หลัก แล้วรวมกันตอนแสดงผล
+  // (โหลดพร้อมกันได้ ไม่ต้องรอกัน และไม่เขียนทับกัน)
+  const [teachingRows, setTeachingRows] = useState(() => readScheduleCache().teaching || []);
+  const [scheduleLoaded, setScheduleLoaded] = useState(() => !!readScheduleCache().savedAt);
+  const allSchedule = useMemo(() => mergeSchedules(schedule, teachingRows), [schedule, teachingRows]);
 
   // persistence — Google Sheets backend when API_URL is set, else local shared storage
   useEffect(() => {
+    // ตารางสอนรายครู — เริ่มโหลดทันทีพร้อมข้อมูลหลัก (ไม่ต้องรอกัน)
+    if (TEACHING_API_URL) {
+      loadTeachingSchedule()
+        .then(({ rows, warnings }) => {
+          setTeachingRows(rows); setScheduleWarnings(warnings); setScheduleLoaded(true);
+          writeScheduleCache({ teaching: rows, warnings });
+        })
+        .catch(() => {});
+    }
     (async () => {
       if (API_URL) {
         try {
           const { items: si, borrows: sb, damages: sd, staff: ss, schedule: sc, tasks: tk, orgEvents: oe, repairs: rp, pmSchedule: pm, docs: dc } = await loadFromSheets();
           setItems(si); setBorrows(sb); setDamages(sd);
           if (ss && ss.length) setStaffList(ss);
-          setSchedule(sc || []);
+          setSchedule(sc || []); setScheduleLoaded(true);
+          writeScheduleCache({ base: sc || [] });
           setTasks(tk || []);
           setOrgEvents(oe || []); setRepairs(rp || []); setPmSchedule(pm || []); setDocs(dc || []);
         } catch (e) { setSheetsError("เชื่อมต่อ Google Sheets ไม่สำเร็จ — กำลังใช้ข้อมูลตัวอย่างในเครื่องแทน"); }
         setLoading(false);
-        // ตารางสอนรายครู โหลดแยก ไม่ให้หน้าแรกต้องรอ — ถ้ายังไม่ได้ deploy สคริปต์ก็ข้ามไปเงียบๆ
-        loadTeachingSchedule()
-          .then(({ rows, warnings }) => {
-            setSchedule((prev) => mergeSchedules(prev, rows));
-            setScheduleWarnings(warnings);
-          })
-          .catch(() => {});
         return;
       }
       try {
@@ -830,10 +847,10 @@ export default function App() {
           {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
           {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
-          {tab === "facility" && <Facility items={items} schedule={schedule} pmSchedule={pmSchedule} setTab={setTab} />}
+          {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} setTab={setTab} />}
           {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
-          {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={schedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
-          {tab === "schedule" && <ScheduleView user={user} schedule={schedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} />}
+          {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={allSchedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} />}
           {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
           {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
@@ -1900,7 +1917,7 @@ function durationHrs(start, end) {
   return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
 }
 
-function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [] }) {
+function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [], loaded = true }) {
   const manager = canManage(user.role);
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
@@ -2013,7 +2030,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
 
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
-          {mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
+          {!loaded ? "กำลังโหลดตารางสอน…" : mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
         </div>
       ) : mine ? (
         <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
@@ -2141,7 +2158,7 @@ function SportScheduleBoard({ rows, canDelete, onDelete }) {
       <div className="flex gap-1.5 mb-3 overflow-x-auto">
         {dayList.map((d) => (
           <button key={d} onClick={() => setDay(d)} className="px-3 py-1.5 text-xs font-semibold shrink-0"
-            style={d === day ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate, border: `1px solid ${C.line}` }}>
+            style={d === day ? { background: dayColor(d).bar, color: C.white } : { background: dayColor(d).bg, color: dayColor(d).fg, border: `1px solid ${dayColor(d).bar}` }}>
             {d} <span style={{ opacity: 0.7 }}>({countOf(d)})</span>
           </button>
         ))}
@@ -2163,7 +2180,7 @@ function SportScheduleBoard({ rows, canDelete, onDelete }) {
               </div>
               <div className="p-2 space-y-1.5">
                 {bySlot[k].map((r) => {
-                  const col = scheduleCardColor(r.dept || r.subject);
+                  const col = dayColor(r.day);
                   return (
                     <div key={r.id} className="px-2.5 py-1.5 flex items-start justify-between gap-2" style={{ background: col.bg, borderLeft: `3px solid ${col.bar}` }}>
                       <div className="min-w-0">
@@ -2239,21 +2256,17 @@ function ScheduleForm({ staffList, onSubmit, initial, submitLabel = "บัน�
   );
 }
 
-// สีการ์ดในตารางแบบกริด — ไล่สีตามชื่อวิชา/กิจกรรม ให้ดูเป็นระเบียบและแยกแยะง่าย
-const SCHEDULE_CARD_COLORS = [
-  { bg: "#F1D2D6", fg: "#7A1220", bar: C.crimson },
-  { bg: "#DCEEFB", fg: "#1B5E8A", bar: "#2E8FCB" },
-  { bg: "#E3F3E6", fg: "#1E7A4C", bar: "#37A868" },
-  { bg: "#FBF1DF", fg: "#8A5A0C", bar: "#B8791A" },
-  { bg: "#EDE3FB", fg: "#5B3B9E", bar: "#7C4FD1" },
-  { bg: "#FDE6EF", fg: "#9E3B6E", bar: "#D15C97" },
-];
-function scheduleCardColor(subject) {
-  let h = 0;
-  const s = String(subject || "");
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % SCHEDULE_CARD_COLORS.length;
-  return SCHEDULE_CARD_COLORS[h < 0 ? 0 : h];
-}
+// สีประจำวัน: จันทร์เหลือง อังคารชมพู พุธเขียว พฤหัสส้ม ศุกร์ฟ้า เสาร์ม่วง (อาทิตย์แดง)
+const DAY_COLORS = {
+  "จันทร์": { bg: "#FFF6CC", fg: "#7A5A00", bar: "#E6B800" },
+  "อังคาร": { bg: "#FCE4EF", fg: "#9E2A5E", bar: "#E0609A" },
+  "พุธ": { bg: "#E3F5E6", fg: "#1E6B3F", bar: "#3DAA63" },
+  "พฤหัสบดี": { bg: "#FFE9D6", fg: "#9A4A0B", bar: "#F08A2E" },
+  "ศุกร์": { bg: "#E0F2FC", fg: "#135E86", bar: "#3BA7DE" },
+  "เสาร์": { bg: "#EFE5FB", fg: "#5B3B9E", bar: "#8E5BD6" },
+  "อาทิตย์": { bg: "#FBE3E3", fg: "#8C1C1C", bar: "#D9423F" },
+};
+function dayColor(day) { return DAY_COLORS[day] || DAY_COLORS["จันทร์"]; }
 
 // ตารางสอนแบบกริด (วัน x คาบ) สำหรับมุมมอง "ตารางสอนของฉัน" — คลิกที่คาบซึ่งเพิ่มเอง
 // ในระบบ (มี _row) เพื่อแก้ไข/ลบรายครั้งได้ทันที ส่วนคาบที่ดึงมาจากชีตตารางสอนกลาง
@@ -2282,7 +2295,7 @@ function ScheduleGrid({ rows, onEdit, onDelete }) {
           <tr>
             <th className="text-left px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 100 }}>เวลา</th>
             {dayList.map((d) => (
-              <th key={d} className="text-center px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 150 }}>{d}</th>
+              <th key={d} className="text-center px-3 py-2.5 text-xs font-semibold" style={{ background: C.navy, color: C.white, minWidth: 150, borderBottom: `4px solid ${dayColor(d).bar}` }}>{d}</th>
             ))}
           </tr>
         </thead>
@@ -2293,14 +2306,14 @@ function ScheduleGrid({ rows, onEdit, onDelete }) {
               {dayList.map((d) => {
                 const s = rows.find((r) => r.day === d && r.start === slot.start && r.end === slot.end);
                 if (!s) return <td key={d} className="px-2 py-2 text-center text-xs align-middle" style={{ color: C.mute }}>–</td>;
-                const col = scheduleCardColor(s.subject);
+                const col = dayColor(d);
                 const editable = !!s._row;
                 return (
                   <td key={d} className="px-2 py-2 align-top">
                     <div className="p-2" style={{ background: col.bg, borderLeft: `3px solid ${col.bar}` }}>
                       <div className="text-xs font-bold" style={{ color: col.fg }}>{s.subject}</div>
                       {s.loc && <div className="text-[11px] mt-0.5" style={{ color: col.fg }}>{s.loc}</div>}
-                      {s.group && <div className="text-[11px]" style={{ color: col.fg, opacity: 0.85 }}>{s.group}</div>}
+                      {s.group && s.group !== s.subject && <div className="text-[11px]" style={{ color: col.fg, opacity: 0.85 }}>{s.group}</div>}
                       {s.source === "teachingSheet" && s.note && <div className="text-[10px]" style={{ color: col.fg, opacity: 0.75 }}>{s.note}</div>}
                       {editable ? (
                         <div className="flex gap-2 mt-1.5">
