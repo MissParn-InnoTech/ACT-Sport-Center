@@ -1049,8 +1049,8 @@ export default function App() {
           {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
           {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
           {tab === "analytics" && <Analytics user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} repairs={repairs} pmSchedule={pmSchedule} docs={docs} setTab={setTab} />}
-          {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
-          {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
+          {tab === "reports" && <Reports user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} repairs={repairs} pmSchedule={pmSchedule} docs={docs} />}
+          {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} repairs={repairs} pmSchedule={pmSchedule} docs={docs} actionsLog={actionsLog} logAction={logAction} setTab={setTab} />}
         </main>
         <BottomNav nav={nav} tab={tab} setTab={setTab} />
       </div>
@@ -1470,18 +1470,9 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
       </div>
 
       {(orgOverdueTasks.length > 0 || orgTodayTasks.length > 0 || orgCritical.length > 0) && (
-        <div className="p-4 mb-4" style={{ background: C.badBg, border: `1px solid #E9B9C1` }}>
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle size={16} style={{ color: C.crimson }} />
-            <h3 className="text-sm font-bold" style={{ color: C.crimsonDeep }}>ATTENTION REQUIRED — ต้องการความสนใจ</h3>
-          </div>
-          <div className="flex flex-wrap gap-4 text-sm" style={{ color: "#5B2430" }}>
-            {orgOverdueTasks.length > 0 && <span>🔴 {orgOverdueTasks.length} งานเกินกำหนด</span>}
-            {orgTodayTasks.length > 0 && <span>🟡 {orgTodayTasks.length} งานครบกำหนดวันนี้</span>}
-            {orgCritical.length > 0 && <span>⚠️ {orgCritical.length} งานวิกฤต</span>}
-          </div>
-          <button onClick={() => setTab("tasks")} className="text-xs font-semibold mt-2 underline" style={{ color: C.crimsonDeep }}>ไปที่หน้าจัดการงาน →</button>
-        </div>
+        <AttentionAlert
+          overdue={orgOverdueTasks} today={orgTodayTasks} critical={orgCritical}
+          onOpen={() => setTab("tasks")} />
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -1547,6 +1538,58 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function AttentionAlert({ overdue = [], today = [], critical = [], onOpen }) {
+  const [open, setOpen] = useState(false);
+  const groups = [
+    { key: "overdue", label: "เกินกำหนด", icon: "🔴", tasks: overdue },
+    { key: "today",   label: "ครบกำหนดวันนี้", icon: "🟡", tasks: today },
+    { key: "critical", label: "งานวิกฤต", icon: "⚠️", tasks: critical },
+  ].filter((g) => g.tasks.length > 0);
+  return (
+    <div className="mb-4" style={{ background: C.badBg, border: `1px solid #E9B9C1` }}>
+      <button onClick={() => setOpen((v) => !v)} className="w-full text-left p-4 flex items-start gap-2">
+        <AlertTriangle size={16} style={{ color: C.crimson, marginTop: 2 }} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-bold" style={{ color: C.crimsonDeep }}>ATTENTION REQUIRED — ต้องการความสนใจ</h3>
+            <ChevronDown size={16} style={{ color: C.crimsonDeep, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm mt-1" style={{ color: "#5B2430" }}>
+            {groups.map((g) => <span key={g.key}>{g.icon} {g.tasks.length} {g.label}</span>)}
+          </div>
+          {!open && <div className="text-[11px] mt-1" style={{ color: "#7B3F4A" }}>คลิกเพื่อดูรายการทั้งหมด</div>}
+        </div>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-4">
+          {groups.map((g) => (
+            <div key={g.key}>
+              <div className="text-xs font-bold mb-1.5" style={{ color: C.crimsonDeep }}>{g.icon} {g.label} ({g.tasks.length})</div>
+              <div className="space-y-1">
+                {g.tasks.slice(0, 8).map((t) => (
+                  <div key={t.id} className="flex items-start gap-2 text-xs p-2" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate" style={{ color: C.ink }}>{t.title}</div>
+                      <div style={{ color: C.mute }}>
+                        {t.assignee ? `${t.assignee}` : "ยังไม่ระบุผู้รับผิดชอบ"}
+                        {t.dueDate && ` · กำหนด ${t.dueDate}`}
+                        {t.location && ` · ${t.location}`}
+                      </div>
+                    </div>
+                    <Pill fg={(PRIORITY_META[t.priority] || PRIORITY_META.NORMAL).fg} bg={(PRIORITY_META[t.priority] || PRIORITY_META.NORMAL).bg}>{(PRIORITY_META[t.priority] || PRIORITY_META.NORMAL).label}</Pill>
+                  </div>
+                ))}
+                {g.tasks.length > 8 && <div className="text-xs italic" style={{ color: C.mute }}>...และอีก {g.tasks.length - 8} รายการ</div>}
+              </div>
+            </div>
+          ))}
+          <button onClick={onOpen} className="text-xs font-semibold underline" style={{ color: C.crimsonDeep }}>ไปที่หน้าจัดการงาน →</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -3125,42 +3168,237 @@ function toCsv(rows) {
   return lines.join("\n");
 }
 
-function Reports({ items, borrows, damages }) {
-  const [type, setType] = useState(REPORT_TYPES[0]);
+const REPORT_CATALOG = [
+  { key: "inventory",   label: "ทะเบียนครุภัณฑ์",     desc: "รายการอุปกรณ์ทั้งหมด (ปกติ/ชำรุด/สูญหาย)" },
+  { key: "facility",    label: "สถานที่และการใช้งาน",   desc: "รายชื่อห้อง/สนาม + สถิติการใช้งานรายสัปดาห์" },
+  { key: "borrowing",   label: "การยืม–คืน",             desc: "รายการยืม-คืนอุปกรณ์ + สถานะปัจจุบัน" },
+  { key: "damage",      label: "อุปกรณ์ชำรุด/สูญหาย",   desc: "บันทึกอุปกรณ์ชำรุดและการดำเนินการ" },
+  { key: "maintenance", label: "การซ่อมบำรุง",           desc: "ประวัติการซ่อม + ค่าใช้จ่ายรวม" },
+  { key: "schedule",    label: "ตารางสอนและ Workload",   desc: "คาบ/สัปดาห์ต่อครู + สรุปประเภทกีฬา" },
+  { key: "staff",       label: "บุคลากรและสิทธิ์",        desc: "รายชื่อบุคลากร แยกตามหน่วยงานและระดับสิทธิ์" },
+  { key: "tasks",       label: "งานที่ได้รับมอบหมาย",   desc: "งานทั้งหมด + สถานะ + ผู้รับผิดชอบ" },
+  { key: "monthly",     label: "สรุปประจำเดือน (ฝ่ายบริหาร)", desc: "ภาพรวมทุกด้านสำหรับผู้บริหาร" },
+];
 
+function Reports({ user, items = [], borrows = [], damages = [], tasks = [], staffList = [], schedule = [], combinedSport = [], repairs = [], pmSchedule = [], docs = [] }) {
+  const [key, setKey] = useState("inventory");
+  const now = new Date();
+  const nowStr = now.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" });
+
+  // สร้างข้อมูลจริงต่อประเภทรายงาน
+  const report = useMemo(() => {
+    if (key === "inventory") {
+      const rows = items.map((i) => ({
+        รหัส: i.code, รายการ: i.name, หมวด: catName(i.catCode), สถานที่: i.loc,
+        ผู้ดูแล: i.owner || "ยังไม่ระบุ",
+        ใช้งานได้: i.normal, ชำรุด: i.damaged, สูญหาย: i.lost || 0, จำหน่ายออก: i.disposed || 0,
+      }));
+      const summary = [
+        { label: "รายการทั้งหมด", value: items.length },
+        { label: "ใช้งานได้ (ชิ้น)", value: items.reduce((s, i) => s + i.normal, 0) },
+        { label: "ชำรุด (ชิ้น)", value: items.reduce((s, i) => s + i.damaged, 0), tone: "crimson" },
+        { label: "สูญหาย (ชิ้น)", value: items.reduce((s, i) => s + (i.lost || 0), 0), tone: "gold" },
+      ];
+      return { rows, summary };
+    }
+    if (key === "facility") {
+      const rows = LOCATIONS.map((l) => {
+        const li = items.filter((i) => i.loc === l.name);
+        const sc = schedule.filter((s) => s.loc === l.name);
+        return {
+          รหัส: l.code, สถานที่: l.name, ผู้ดูแล: l.owner || "ยังไม่ระบุ",
+          จำนวนอุปกรณ์: li.length,
+          ใช้งานได้: li.reduce((s, i) => s + i.normal, 0),
+          ชำรุด: li.reduce((s, i) => s + i.damaged, 0),
+          คาบต่อสัปดาห์: sc.length,
+          "ชั่วโมง/สัปดาห์": sc.reduce((s, r) => s + durationHrs(r.start, r.end), 0).toFixed(1),
+        };
+      });
+      const summary = [
+        { label: "จำนวนสถานที่", value: LOCATIONS.length },
+        { label: "คาบใช้งาน/สัปดาห์", value: schedule.length },
+        { label: "อุปกรณ์ทั้งหมด", value: items.length },
+      ];
+      return { rows, summary };
+    }
+    if (key === "borrowing") {
+      const rows = borrows.map((b) => ({
+        เลขที่: b.id, วันที่ยืม: b.date, ผู้ยืม: b.borrower, อุปกรณ์: b.itemName, รหัสอุปกรณ์: b.itemCode,
+        จำนวน: b.qty, สถานที่: b.where || "-", วัตถุประสงค์: b.purpose || "-",
+        กำหนดคืน: b.due || "-", วันคืน: b.returnedAt || "-", สถานะ: b.status,
+      }));
+      const active = borrows.filter((b) => b.status === "borrowed");
+      const overdue = active.filter((b) => b.due && b.due < TODAY_ISO);
+      const summary = [
+        { label: "รายการยืมทั้งหมด", value: borrows.length },
+        { label: "ยังไม่คืน", value: active.length, tone: "gold" },
+        { label: "เกินกำหนดคืน", value: overdue.length, tone: "crimson" },
+      ];
+      return { rows, summary };
+    }
+    if (key === "damage") {
+      const rows = damages.map((d) => ({
+        เลขที่: d.id, วันที่: d.date, อุปกรณ์: d.itemName, รหัส: d.itemCode,
+        จำนวน: d.qty, ผู้แจ้ง: d.reporter, สาเหตุ: d.cause || "-", สถานที่: d.where || "-", สถานะ: d.status,
+      }));
+      const open = damages.filter((d) => d.status !== "resolved" && d.status !== "disposed");
+      const summary = [
+        { label: "รายการแจ้งชำรุดทั้งหมด", value: damages.length },
+        { label: "รอดำเนินการ", value: open.length, tone: "crimson" },
+      ];
+      return { rows, summary };
+    }
+    if (key === "maintenance") {
+      const rows = repairs.map((r) => ({
+        เลขที่: r.id, วันที่ซ่อม: r.date, อ้างอิง: r.ref, "ชื่ออุปกรณ์/สถานที่": r.refName,
+        ร้านช่าง: r.vendor, ค่าใช้จ่าย: r.cost, สภาพหลังซ่อม: r.condition || "-",
+        รับประกันถึง: r.warrantyUntil || "-", สถานะ: r.status || "-",
+      }));
+      const totalCost = repairs.reduce((s, r) => s + (r.cost || 0), 0);
+      const pmSoon = pmSchedule.filter((p) => p.nextDate && p.nextDate >= TODAY_ISO && p.nextDate <= addDaysISO(30)).length;
+      const summary = [
+        { label: "ครั้งที่ซ่อมทั้งหมด", value: repairs.length },
+        { label: "ค่าใช้จ่ายรวม (บาท)", value: totalCost.toLocaleString() },
+        { label: "นัด PM ใน 30 วัน", value: pmSoon, tone: "gold" },
+      ];
+      return { rows, summary };
+    }
+    if (key === "schedule") {
+      const perTeacher = {};
+      schedule.forEach((s) => {
+        const t = (s.teacher || "").trim();
+        if (!t || t === "เลือกกีฬา") return;
+        perTeacher[t] = perTeacher[t] || { ครูผู้สอน: t, คาบต่อสัปดาห์: 0, "ชั่วโมง/สัปดาห์": 0, สถานที่หลัก: {} };
+        perTeacher[t]["คาบต่อสัปดาห์"] += 1;
+        perTeacher[t]["ชั่วโมง/สัปดาห์"] += durationHrs(s.start, s.end);
+        if (s.loc) perTeacher[t]["สถานที่หลัก"][s.loc] = (perTeacher[t]["สถานที่หลัก"][s.loc] || 0) + 1;
+      });
+      const rows = Object.values(perTeacher).map((r) => ({
+        ...r,
+        "ชั่วโมง/สัปดาห์": r["ชั่วโมง/สัปดาห์"].toFixed(1),
+        "สถานที่หลัก": Object.entries(r["สถานที่หลัก"]).sort((a, b) => b[1] - a[1])[0]?.[0] || "-",
+      })).sort((a, b) => b["คาบต่อสัปดาห์"] - a["คาบต่อสัปดาห์"]);
+      const summary = [
+        { label: "จำนวนครูที่มีคาบ", value: rows.length },
+        { label: "คาบรวม/สัปดาห์", value: schedule.length },
+        { label: "ตารางรวมกีฬา (คาบ)", value: combinedSport.length },
+      ];
+      return { rows, summary };
+    }
+    if (key === "staff") {
+      const rows = staffList.map((s) => ({
+        รหัส: s.id, ชื่อ: s.name, หน่วยงาน: s.dept || "-",
+        หน้าที่: s.role || "-", เบอร์โทร: s.phone || "-", ระดับสิทธิ์: s.level || "L1",
+      }));
+      const byLevel = {};
+      staffList.forEach((s) => { byLevel[s.level || "L1"] = (byLevel[s.level || "L1"] || 0) + 1; });
+      const summary = [
+        { label: "บุคลากรทั้งหมด", value: staffList.length },
+        { label: "L3 (หัวหน้า)", value: byLevel.L3 || 0 },
+        { label: "L1 (ครู)", value: byLevel.L1 || 0 },
+        { label: "L2 (ผู้ช่วย)", value: byLevel.L2 || 0 },
+      ];
+      return { rows, summary };
+    }
+    if (key === "tasks") {
+      const rows = tasks.map((t) => ({
+        รหัส: t.id, ชื่องาน: t.title, ความสำคัญ: t.priority || "-", สถานะ: t.status || "-",
+        ผู้รับผิดชอบ: t.assignee || "ยังไม่ระบุ", ผู้สั่ง: t.createdBy || "-",
+        กำหนดเสร็จ: t.dueDate || "-", สถานที่: t.location || "-",
+      }));
+      const active = tasks.filter((t) => t.status !== "COMPLETED" && t.status !== "CANCELLED");
+      const summary = [
+        { label: "งานทั้งหมด", value: tasks.length },
+        { label: "งานที่เปิดอยู่", value: active.length },
+        { label: "เกินกำหนด", value: tasks.filter((t) => taskBucket(t) === "overdue").length, tone: "crimson" },
+        { label: "ยังไม่ระบุผู้รับผิดชอบ", value: active.filter((t) => !t.assignee).length, tone: "gold" },
+      ];
+      return { rows, summary };
+    }
+    // monthly: ภาพรวมทุกด้าน
+    const rows = [
+      { หมวด: "ครุภัณฑ์", "รายการ/ชิ้น": items.length, ปกติ: items.reduce((s, i) => s + i.normal, 0), ชำรุด: items.reduce((s, i) => s + i.damaged, 0) },
+      { หมวด: "การยืม-คืน (ยังเปิดอยู่)", "รายการ/ชิ้น": borrows.filter((b) => b.status === "borrowed").length, ปกติ: "-", ชำรุด: borrows.filter((b) => b.status === "borrowed" && b.due < TODAY_ISO).length },
+      { หมวด: "การซ่อมบำรุง (เดือนนี้)", "รายการ/ชิ้น": repairs.filter((r) => (r.date || "").startsWith(TODAY_ISO.slice(0, 7))).length, ปกติ: "-", ชำรุด: "-" },
+      { หมวด: "งานที่เปิดอยู่", "รายการ/ชิ้น": tasks.filter((t) => t.status !== "COMPLETED" && t.status !== "CANCELLED").length, ปกติ: "-", ชำรุด: tasks.filter((t) => taskBucket(t) === "overdue").length },
+      { หมวด: "บุคลากร", "รายการ/ชิ้น": staffList.length, ปกติ: "-", ชำรุด: "-" },
+      { หมวด: "สถานที่", "รายการ/ชิ้น": LOCATIONS.length, ปกติ: "-", ชำรุด: "-" },
+      { หมวด: "คลังความรู้", "รายการ/ชิ้น": docs.length, ปกติ: "-", ชำรุด: "-" },
+    ];
+    const summary = [
+      { label: "หมวดในรายงาน", value: rows.length },
+      { label: "อัปเดตล่าสุด", value: nowStr },
+    ];
+    return { rows, summary };
+  }, [key, items, borrows, damages, tasks, staffList, schedule, combinedSport, repairs, pmSchedule, docs, nowStr]);
+
+  const current = REPORT_CATALOG.find((r) => r.key === key);
   const exportCsv = () => {
-    let rows = [];
-    if (type === "Inventory Report") rows = items.map((i) => ({ รหัส: i.code, รายการ: i.name, หมวด: catName(i.catCode), สถานที่: i.loc, ปกติ: i.normal, ชำรุด: i.damaged }));
-    else if (type === "Borrowing Report" || type === "Return Report") rows = borrows.map((b) => ({ วันที่: b.date, ผู้ยืม: b.borrower, อุปกรณ์: b.itemName, จำนวน: b.qty, สถานะ: b.status }));
-    else if (type === "Damage Report" || type === "Maintenance Report") rows = damages.map((d) => ({ วันที่: d.date, อุปกรณ์: d.itemName, จำนวน: d.qty, สถานะ: d.status }));
-    else rows = items.map((i) => ({ รหัส: i.code, รายการ: i.name, หมวด: catName(i.catCode) }));
-    const blob = new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8;" });
+    if (!report.rows.length) return;
+    const blob = new Blob(["\ufeff" + toCsv(report.rows)], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `${type.replace(/\s/g, "_")}.csv`; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = `ACT_Sport_${current.label}_${TODAY_ISO}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
+  const printPage = () => window.print();
+
+  const headers = report.rows[0] ? Object.keys(report.rows[0]) : [];
 
   return (
     <div>
-      <SectionHead eyebrow="REPORTS" title="รายงาน" sub="เลือกประเภทรายงานและส่งออกเป็นไฟล์ CSV" />
-      <div className="grid grid-cols-2 gap-4">
+      <SectionHead eyebrow="REPORTS" title="รายงาน" sub={`ข้อมูลสด ณ ${nowStr} — สามารถส่งออก CSV หรือพิมพ์เก็บได้ทุกรายงาน`} />
+      <div className="grid grid-cols-4 gap-4">
         <div className="col-span-1 space-y-1">
-          {REPORT_TYPES.map((t) => (
-            <button key={t} onClick={() => setType(t)} className="w-full text-left px-3 py-2 text-sm"
-              style={{ background: type === t ? C.navy : C.white, color: type === t ? C.white : C.ink, border: `1px solid ${C.line}` }}>
-              {t}
+          {REPORT_CATALOG.map((r) => (
+            <button key={r.key} onClick={() => setKey(r.key)} className="w-full text-left px-3 py-2.5 text-sm"
+              style={{ background: key === r.key ? C.navy : C.white, color: key === r.key ? C.white : C.ink, border: `1px solid ${C.line}` }}>
+              <div className="font-semibold">{r.label}</div>
+              <div className="text-[10.5px] mt-0.5" style={{ color: key === r.key ? "rgba(255,255,255,0.7)" : C.mute }}>{r.desc}</div>
             </button>
           ))}
         </div>
-        <div className="col-span-3 p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-          <h3 className="font-bold text-base mb-1" style={{ color: C.navy }}>{type}</h3>
-          <p className="text-sm mb-4" style={{ color: C.slate }}>ข้อมูลคำนวณจากทะเบียนครุภัณฑ์และรายการยืม–คืนล่าสุดแบบเรียลไทม์</p>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <StatCard label="รายการในรายงาน" value={items.length} tone="navy" />
-            <StatCard label="รอบข้อมูล" value="ปีการศึกษา 2568" tone="gold" />
-            <StatCard label="อัปเดตล่าสุด" value="15 ก.ย. 2569" tone="ok" />
+        <div className="col-span-3 space-y-4">
+          <div className="p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
+              <div>
+                <h3 className="font-bold text-lg" style={{ color: C.navy }}>{current.label}</h3>
+                <p className="text-sm mt-0.5" style={{ color: C.slate }}>{current.desc}</p>
+              </div>
+              <div className="flex gap-2">
+                <Btn variant="ghost" small icon={FileText} onClick={printPage}>พิมพ์</Btn>
+                <Btn small icon={Download} onClick={exportCsv} disabled={!report.rows.length}>ส่งออก CSV</Btn>
+              </div>
+            </div>
+            <div className={`grid gap-3 mb-2 grid-cols-${Math.min(report.summary.length, 4)}`}>
+              {report.summary.map((c) => <StatCard key={c.label} label={c.label} value={c.value} tone={c.tone || "navy"} />)}
+            </div>
           </div>
-          <Btn onClick={exportCsv} icon={Download}>ส่งออก CSV</Btn>
+          <div className="p-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-sm" style={{ color: C.navy }}>ตัวอย่างข้อมูล ({report.rows.length} แถว)</h4>
+              {report.rows.length > 25 && <span className="text-xs" style={{ color: C.mute }}>แสดง 25 แถวแรก · ส่งออกเพื่อดูทั้งหมด</span>}
+            </div>
+            {report.rows.length === 0 ? (
+              <div className="p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}` }}>ยังไม่มีข้อมูลในรายงานนี้</div>
+            ) : (
+              <div className="table-scroll">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: C.paper }}>
+                      {headers.map((h) => <th key={h} className="text-left px-2 py-2 font-semibold" style={{ color: C.slate, borderBottom: `1px solid ${C.line}` }}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.rows.slice(0, 25).map((r, i) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${C.line}` }}>
+                        {headers.map((h) => <td key={h} className="px-2 py-2" style={{ color: C.ink }}>{String(r[h] ?? "-")}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -3170,22 +3408,44 @@ function Reports({ items, borrows, damages }) {
 /* ============================================================
    MANAGEMENT ACTIONS (L3 only)
    ============================================================ */
-function ManagementActions({ user, items, setItems, actionsLog, logAction }) {
-  const recommended = useMemo(() => {
-    return items
-      .filter((i) => i.damaged > 0)
-      .map((i) => {
-        const rate = i.damaged / (i.normal + i.damaged || 1);
-        let rec = "Monitor";
-        if (rate >= 0.7) rec = "Replace";
-        else if (rate >= 0.4) rec = "Procure";
-        else rec = "Repair";
-        return { ...i, rate, rec };
-      })
-      .sort((a, b) => b.rate - a.rate)
-      .slice(0, 10);
-  }, [items]);
+function ManagementActions({ user, items = [], setItems, borrows = [], damages = [], tasks = [], staffList = [], repairs = [], pmSchedule = [], docs = [], actionsLog = [], logAction, setTab }) {
+  // สแกนศูนย์กีฬาแบบครบวงจร — สร้างรายการ "ต้องสั่งการ" ในทุกด้าน
+  const buckets = useMemo(() => {
+    const activeTasks = tasks.filter((t) => t.status !== "COMPLETED" && t.status !== "CANCELLED");
+    const overdueBorrows = borrows.filter((b) => b.status === "borrowed" && b.due && b.due < TODAY_ISO);
+    const openDamages = damages.filter((d) => d.status !== "resolved" && d.status !== "disposed");
+    const outOfStock = items.filter((i) => i.normal === 0 && i.damaged > 0);
+    const highDamage = items.filter((i) => i.damaged > 0 && (i.damaged / (i.normal + i.damaged || 1)) >= 0.3);
+    const noOwner = items.filter((i) => !i.owner || i.owner === "ยังไม่ระบุ");
+    const noPrice = items.filter((i) => !(i.price > 0));
+    const noPhoto = items.filter((i) => !i.imageUrl);
+    const unassigned = activeTasks.filter((t) => !t.assignee);
+    const pmOverdue = pmSchedule.filter((p) => p.nextDate && p.nextDate < TODAY_ISO);
+    const openRepairs = repairs.filter((r) => {
+      const st = String(r.status || "").toLowerCase();
+      return st && !st.includes("เสร็จ") && st !== "done" && st !== "closed";
+    });
+    return {
+      overdueBorrows, openDamages, outOfStock, highDamage, noOwner, noPrice, noPhoto,
+      unassigned, activeTasks, pmOverdue, openRepairs,
+    };
+  }, [items, borrows, damages, tasks, repairs, pmSchedule]);
 
+  const recommended = useMemo(() => items
+    .filter((i) => i.damaged > 0)
+    .map((i) => {
+      const rate = i.damaged / (i.normal + i.damaged || 1);
+      let rec = "Monitor";
+      if (rate >= 0.7) rec = "Replace";
+      else if (rate >= 0.4) rec = "Procure";
+      else rec = "Repair";
+      return { ...i, rate, rec };
+    })
+    .sort((a, b) => b.rate - a.rate)
+    .slice(0, 12),
+  [items]);
+
+  const [tab_, setTab_] = useState("recommend"); // recommend | quality | operations
   const takeAction = (it, action) => {
     logAction(`สั่งการ: ${action} — ${it.code} (${it.name})`);
     if (action === "Repair") {
@@ -3195,39 +3455,136 @@ function ManagementActions({ user, items, setItems, actionsLog, logAction }) {
     }
   };
 
+  // สรุปตัวชี้วัดการสั่งการ (KPI)
+  const kpis = [
+    { label: "อุปกรณ์ต้องซ่อม/จัดหา", value: recommended.length, tone: "crimson", icon: Wrench, sub: buckets.outOfStock.length > 0 ? `${buckets.outOfStock.length} รายการหมดสต๊อก` : "", go: () => setTab_("recommend") },
+    { label: "งานที่ยังไม่มีผู้รับผิดชอบ", value: buckets.unassigned.length, tone: "gold", icon: ClipboardList, sub: `จากงานที่เปิดอยู่ ${buckets.activeTasks.length}`, go: () => setTab && setTab("tasks") },
+    { label: "อุปกรณ์ที่ยืมเกินกำหนดคืน", value: buckets.overdueBorrows.length, tone: "crimson", icon: ArrowLeftRight, sub: buckets.overdueBorrows[0] ? `เก่าสุด: ${buckets.overdueBorrows.sort((a,b)=>a.due.localeCompare(b.due))[0].due}` : "", go: () => setTab && setTab("borrow") },
+    { label: "แจ้งชำรุดรอดำเนินการ", value: buckets.openDamages.length, tone: "navy", icon: AlertTriangle, sub: "", go: () => setTab && setTab("damage") },
+    { label: "นัดซ่อมบำรุงที่ผ่านมา", value: buckets.pmOverdue.length, tone: "gold", icon: CalendarClock, sub: buckets.pmOverdue.length > 0 ? "ต้องเลื่อนนัดใหม่" : "", go: () => setTab && setTab("maintenance") },
+    { label: "งานซ่อมยังไม่ปิด", value: buckets.openRepairs.length, tone: "navy", icon: Wrench, sub: "", go: () => setTab && setTab("maintenance") },
+  ];
+
+  const dataQuality = [
+    { label: "อุปกรณ์ไม่มีผู้ดูแล", value: buckets.noOwner.length, sample: buckets.noOwner.slice(0, 5).map((i) => i.name) },
+    { label: "อุปกรณ์ไม่มีราคาต่อหน่วย", value: buckets.noPrice.length, sample: buckets.noPrice.slice(0, 5).map((i) => i.name) },
+    { label: "อุปกรณ์ไม่มีรูปภาพ", value: buckets.noPhoto.length, sample: buckets.noPhoto.slice(0, 5).map((i) => i.name) },
+  ];
+
   return (
     <div>
-      <SectionHead eyebrow="MANAGEMENT ACTION" title="สั่งการบริหารทรัพยากร" sub="DATA → INSIGHT → DECISION → ACTION" />
+      <SectionHead eyebrow="MANAGEMENT ACTION" title="สั่งการบริหารทรัพยากร"
+        sub="DATA → INSIGHT → DECISION → ACTION · สแกนศูนย์กีฬาแบบครบทุกด้าน" />
 
-      <div className="p-4 mb-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-        <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>รายการที่ระบบแนะนำให้ดำเนินการ</h3>
-        <div className="table-scroll">
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ color: C.slate }}>
-              {["อุปกรณ์", "หมวด", "อัตราชำรุด", "คำแนะนำระบบ", "การดำเนินการ"].map((h) => <th key={h} className="text-left px-2 py-2 text-xs font-semibold">{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {recommended.map((it) => (
-              <tr key={it.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                <td className="px-2 py-2">{it.name} <span className="text-xs" style={{ color: C.mute }}>({it.code})</span></td>
-                <td className="px-2 py-2 text-xs">{catName(it.catCode)}</td>
-                <td className="px-2 py-2"><Pill fg={it.rate >= 0.7 ? C.bad : it.rate >= 0.4 ? C.warn : C.ok} bg={it.rate >= 0.7 ? C.badBg : it.rate >= 0.4 ? C.warnBg : C.okBg}>{Math.round(it.rate * 100)}%</Pill></td>
-                <td className="px-2 py-2 text-xs font-semibold" style={{ color: C.navy }}>{it.rec}</td>
-                <td className="px-2 py-2">
-                  <div className="flex gap-1.5">
-                    {["Repair", "Replace", "Procure"].map((a) => (
-                      <Btn key={a} small variant={a === it.rec ? "crimson" : "ghost"} onClick={() => takeAction(it, a)}>{a}</Btn>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+      {/* KPI ต้องสั่งการ */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+        {kpis.map((k) => (
+          <button key={k.label} onClick={k.go}
+            className="text-left p-4 transition-colors hover:brightness-95"
+            style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${k.tone === "crimson" ? C.crimson : k.tone === "gold" ? C.gold : C.navy}` }}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-medium" style={{ color: C.slate }}>{k.label}</span>
+              <k.icon size={14} style={{ color: k.tone === "crimson" ? C.crimson : k.tone === "gold" ? C.gold : C.navy }} />
+            </div>
+            <div className="text-2xl font-bold" style={{ color: C.ink }}>{k.value}</div>
+            {k.sub && <div className="text-[11px] mt-0.5" style={{ color: C.mute }}>{k.sub}</div>}
+          </button>
+        ))}
       </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-3">
+        {[
+          ["recommend", "แนะนำให้ดำเนินการ", recommended.length],
+          ["quality",   "คุณภาพข้อมูล", dataQuality.reduce((s, q) => s + q.value, 0)],
+          ["operations","ปฏิบัติการวันนี้", buckets.overdueBorrows.length + buckets.unassigned.length + buckets.openDamages.length],
+        ].map(([k, label, count]) => (
+          <button key={k} onClick={() => setTab_(k)} className="px-3 py-1.5 text-xs font-semibold transition-colors"
+            style={{
+              background: tab_ === k ? C.navy : C.white, color: tab_ === k ? C.white : C.slate,
+              border: `1px solid ${C.line}`,
+            }}>
+            {label} <span style={{ opacity: 0.7 }}>({count})</span>
+          </button>
+        ))}
+      </div>
+
+      {tab_ === "recommend" && (
+        <div className="p-4 mb-5" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>รายการที่ระบบแนะนำให้ดำเนินการ</h3>
+          {recommended.length === 0 ? (
+            <div className="text-sm py-4 text-center" style={{ color: C.mute }}>ไม่มีอุปกรณ์ที่ต้องดำเนินการเร่งด่วนตอนนี้ ✅</div>
+          ) : (
+          <div className="table-scroll">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ color: C.slate }}>
+                {["อุปกรณ์", "หมวด", "สถานที่", "อัตราชำรุด", "คำแนะนำระบบ", "การดำเนินการ"].map((h) => <th key={h} className="text-left px-2 py-2 text-xs font-semibold">{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {recommended.map((it) => (
+                <tr key={it.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <td className="px-2 py-2">{it.name} <span className="text-xs" style={{ color: C.mute }}>({it.code})</span></td>
+                  <td className="px-2 py-2 text-xs">{catName(it.catCode)}</td>
+                  <td className="px-2 py-2 text-xs" style={{ color: C.slate }}>{it.loc || "-"}</td>
+                  <td className="px-2 py-2"><Pill fg={it.rate >= 0.7 ? C.bad : it.rate >= 0.4 ? C.warn : C.ok} bg={it.rate >= 0.7 ? C.badBg : it.rate >= 0.4 ? C.warnBg : C.okBg}>{Math.round(it.rate * 100)}%</Pill></td>
+                  <td className="px-2 py-2 text-xs font-semibold" style={{ color: C.navy }}>{it.rec}</td>
+                  <td className="px-2 py-2">
+                    <div className="flex gap-1.5">
+                      {["Repair", "Replace", "Procure"].map((a) => (
+                        <Btn key={a} small variant={a === it.rec ? "crimson" : "ghost"} onClick={() => takeAction(it, a)}>{a}</Btn>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+          )}
+        </div>
+      )}
+
+      {tab_ === "quality" && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+          {dataQuality.map((q) => (
+            <div key={q.label} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium" style={{ color: C.slate }}>{q.label}</span>
+                <Pill fg={q.value === 0 ? C.ok : C.crimson} bg={q.value === 0 ? C.okBg : C.badBg}>{q.value}</Pill>
+              </div>
+              {q.value === 0 ? (
+                <div className="text-xs py-3 text-center" style={{ color: C.mute }}>ข้อมูลครบถ้วน ✅</div>
+              ) : (
+                <div className="text-xs space-y-1" style={{ color: C.slate }}>
+                  <div className="mb-1 font-semibold" style={{ color: C.ink }}>ตัวอย่าง:</div>
+                  {q.sample.map((s, i) => <div key={i} className="truncate">• {s}</div>)}
+                  {q.value > q.sample.length && <div className="italic mt-1">...และอีก {q.value - q.sample.length} รายการ</div>}
+                  <button onClick={() => setTab && setTab("inventory")} className="mt-2 text-xs font-semibold underline" style={{ color: C.navy }}>ไปหน้าครุภัณฑ์ →</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab_ === "operations" && (
+        <div className="space-y-4 mb-5">
+          <OpsList title="อุปกรณ์ยืมเกินกำหนดคืน" empty="ไม่มีอุปกรณ์เกินกำหนดคืน ✅" items={buckets.overdueBorrows.slice(0, 10).map((b) => ({
+            key: b.id, primary: `${b.itemName} — ${b.borrower}`, secondary: `กำหนดคืน ${b.due} · ${b.where || "-"}`,
+          }))} action={{ label: "ไปหน้ายืม-คืน", onClick: () => setTab && setTab("borrow") }} />
+          <OpsList title="งานที่ยังไม่มีผู้รับผิดชอบ" empty="ทุกงานมีผู้รับผิดชอบครบ ✅" items={buckets.unassigned.slice(0, 10).map((t) => ({
+            key: t.id, primary: t.title, secondary: `${(PRIORITY_META[t.priority] || PRIORITY_META.NORMAL).label} · ${t.dueDate ? `กำหนด ${t.dueDate}` : "ไม่มีกำหนด"}`,
+          }))} action={{ label: "ไปหน้าจัดการงาน", onClick: () => setTab && setTab("tasks") }} />
+          <OpsList title="แจ้งชำรุดที่รอดำเนินการ" empty="ไม่มีการแจ้งชำรุดที่ค้าง ✅" items={buckets.openDamages.slice(0, 10).map((d) => ({
+            key: d.id, primary: `${d.itemName} × ${d.qty}`, secondary: `แจ้ง ${d.date} · ${d.reporter || "-"}`,
+          }))} action={{ label: "ไปหน้าชำรุด-ซ่อม", onClick: () => setTab && setTab("damage") }} />
+          <OpsList title="นัดซ่อมบำรุงที่เลยกำหนด" empty="ไม่มีนัดซ่อมค้าง ✅" items={buckets.pmOverdue.slice(0, 10).map((p) => ({
+            key: p.id, primary: p.refName, secondary: `นัดเดิม ${p.nextDate} · ${p.cycle || "-"}`,
+          }))} action={{ label: "ไปหน้าซ่อมบำรุง", onClick: () => setTab && setTab("maintenance") }} />
+        </div>
+      )}
 
       <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
         <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><ShieldCheck size={15} /> Audit Log ล่าสุด</h3>
@@ -3241,6 +3598,31 @@ function ManagementActions({ user, items, setItems, actionsLog, logAction }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function OpsList({ title, items = [], empty, action }) {
+  return (
+    <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-bold" style={{ color: C.navy }}>{title} <span style={{ color: C.mute, fontWeight: 400 }}>({items.length})</span></h4>
+        {action && items.length > 0 && (
+          <button onClick={action.onClick} className="text-xs font-semibold underline" style={{ color: C.navy }}>{action.label} →</button>
+        )}
+      </div>
+      {items.length === 0 ? (
+        <div className="text-sm py-2" style={{ color: C.mute }}>{empty}</div>
+      ) : (
+        <div className="space-y-1">
+          {items.map((r) => (
+            <div key={r.key} className="p-2 text-xs" style={{ border: `1px solid ${C.line}` }}>
+              <div className="font-medium" style={{ color: C.ink }}>{r.primary}</div>
+              <div style={{ color: C.mute }}>{r.secondary}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
