@@ -1117,7 +1117,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
         {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
         <div className="hidden lg:flex relative shrink-0 overflow-hidden lg:w-[48%] lg:h-full">
-          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-contain object-top" style={{ transform: "scale(0.81)", transformOrigin: "top center" }} />
+          <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-contain object-left-top" style={{ transform: "scale(0.81)", transformOrigin: "top left" }} />
         </div>
 
         {/* login column */}
