@@ -208,7 +208,49 @@ async function loadTeachingSchedule() {
       type: s.type,
       source: "teachingSheet",
     }));
-  return { rows, warnings: data.meta?.warnings || [], year: data.meta?.academicYear || "" };
+  return { rows, combined: buildCombinedSport(data), warnings: data.meta?.warnings || [], year: data.meta?.academicYear || "" };
+}
+
+// ชื่อกีฬาของครูแต่ละคน จากช่อง "งาน/กีฬา" ในหัวแท็บ เช่น "สำนักงานศูนย์กีฬา / เต้น" → "เต้น"
+function sportNameOf(t) {
+  const d = String(t.dept || "").trim();
+  const last = d.split("/").pop().trim();
+  return last || t.name;
+}
+const NOT_SPORT_DEPT = /^(ครูประจำระดับ|หัวหน้า)/;
+
+/* ตารางรวมกีฬา — ใช้ข้อมูลจากแท็บ "ตารางรวมกีฬา" เท่านั้น (ห้องเรียนที่มีคาบกีฬาในแต่ละคาบ)
+   แล้วจับคู่กับแท็บของครูผู้สอนแต่ละกีฬาในวัน/คาบเดียวกันที่มีห้องเรียนตรงกัน
+   เพื่อบอกว่าคาบนั้นมีการสอนกีฬาอะไรบ้าง */
+function buildCombinedSport(data) {
+  const teachers = data.teachers || [];
+  const combinedTab = teachers.find((t) => /รวมกีฬา/.test(t.sheetName || "")) || teachers.find((t) => /รวม/.test(t.sheetName || ""));
+  if (!combinedTab) return [];
+  const sportTeachers = teachers.filter((t) => t.id !== combinedTab.id && !/รวม/.test(t.sheetName || "") && !NOT_SPORT_DEPT.test(t.dept || ""));
+  const byTeacher = new Map(sportTeachers.map((t) => [t.id, t]));
+  const others = data.slots.filter((s) => byTeacher.has(s.teacherId));
+  return data.slots
+    .filter((s) => s.teacherId === combinedTab.id && s.start && s.end && s.day)
+    .map((s) => {
+      const cls = new Set(s.classes || []);
+      const seen = new Set();
+      const sports = [];
+      others.forEach((o) => {
+        if (o.dayIndex !== s.dayIndex || o.period !== s.period) return;
+        const overlap = (o.classes || []).filter((c) => cls.has(c));
+        if (cls.size && !overlap.length) return; // ต้องมีห้องเรียนตรงกันอย่างน้อย 1 ห้อง
+        const t = byTeacher.get(o.teacherId);
+        const key = t.id;
+        if (seen.has(key)) return;
+        seen.add(key);
+        sports.push({ name: sportNameOf(t), teacher: t.name, room: o.room || "", classes: overlap.length ? overlap : (o.classes || []), subject: o.subject || "" });
+      });
+      return {
+        id: `CS-${s.id}`, day: s.day, dayIndex: s.dayIndex, period: s.period, start: s.start, end: s.end,
+        classes: s.classes || [], group: (s.classes || []).join(", ") || s.subject || s.raw || "",
+        sports: sports.sort((a, b) => a.name.localeCompare(b.name, "th")),
+      };
+    });
 }
 
 // รวมตารางจาก 2 แหล่ง — ถ้าครู/วัน/เวลาเดียวกันมีอยู่แล้ว ให้ใช้แถวเดิม (อาจแก้ไขได้)
@@ -704,6 +746,7 @@ export default function App() {
   // ตารางสอนจากชีตรายครู เก็บแยกจาก schedule หลัก แล้วรวมกันตอนแสดงผล
   // (โหลดพร้อมกันได้ ไม่ต้องรอกัน และไม่เขียนทับกัน)
   const [teachingRows, setTeachingRows] = useState(() => readScheduleCache().teaching || []);
+  const [combinedSport, setCombinedSport] = useState(() => readScheduleCache().combined || []);
   const [scheduleLoaded, setScheduleLoaded] = useState(() => !!readScheduleCache().savedAt);
   const allSchedule = useMemo(() => mergeSchedules(schedule, teachingRows), [schedule, teachingRows]);
 
@@ -712,9 +755,9 @@ export default function App() {
     // ตารางสอนรายครู — เริ่มโหลดทันทีพร้อมข้อมูลหลัก (ไม่ต้องรอกัน)
     if (TEACHING_API_URL) {
       loadTeachingSchedule()
-        .then(({ rows, warnings }) => {
-          setTeachingRows(rows); setScheduleWarnings(warnings); setScheduleLoaded(true);
-          writeScheduleCache({ teaching: rows, warnings });
+        .then(({ rows, combined, warnings }) => {
+          setTeachingRows(rows); setCombinedSport(combined); setScheduleWarnings(warnings); setScheduleLoaded(true);
+          writeScheduleCache({ teaching: rows, combined, warnings });
         })
         .catch(() => {});
     }
@@ -853,7 +896,7 @@ export default function App() {
           {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} setTab={setTab} />}
           {tab === "staff" && <StaffDirectory staff={staffList} setStaffList={setStaffList} user={user} logAction={logAction} />}
           {tab === "profile" && <ProfilePage user={user} setUser={setUser} staffList={staffList} setStaffList={setStaffList} tasks={tasks} schedule={allSchedule} patchTask={patchTask} setTab={setTab} logAction={logAction} />}
-          {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} />}
+          {tab === "schedule" && <ScheduleView user={user} schedule={allSchedule} setSchedule={setSchedule} staffList={staffList} tasks={tasks} logAction={logAction} warnings={scheduleWarnings} loaded={scheduleLoaded} combinedSport={combinedSport} />}
           {tab === "calendar" && <CalendarView user={user} tasks={tasks} schedule={schedule} orgEvents={orgEvents} pmSchedule={pmSchedule} setOrgEvents={setOrgEvents} setTab={setTab} logAction={logAction} />}
           {tab === "maintenance" && <MaintenanceView user={user} items={items} repairs={repairs} setRepairs={setRepairs} pmSchedule={pmSchedule} setPmSchedule={setPmSchedule} staffList={staffList} logAction={logAction} />}
           {tab === "knowledge" && <KnowledgeBase user={user} docs={docs} setDocs={setDocs} logAction={logAction} />}
@@ -1920,7 +1963,7 @@ function durationHrs(start, end) {
   return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60);
 }
 
-function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [], loaded = true }) {
+function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logAction, warnings = [], loaded = true, combinedSport = [] }) {
   const manager = canManage(user.role);
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
@@ -1941,7 +1984,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   const sportRows = useMemo(() => schedule.filter((s) => !isRoomScheduleRow(s)), [schedule]);
   const rows = mine
     ? schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name))
-    : canSeeSport ? sportRows : [];
+    : canSeeSport ? combinedSport : [];
 
   // งานอื่นที่หัวหน้ามอบหมาย (ไม่ใช่คาบสอน) — จาก Work Management, กรองเฉพาะที่ assign ให้ฉัน
   const myOtherTasks = useMemo(
@@ -2003,7 +2046,7 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   return (
     <div>
       <SectionHead eyebrow="SCHEDULE" title={mine ? "ตารางสอนของฉัน" : "ตารางรวมกีฬา"}
-        sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบ — ตารางสอนกีฬาทุกคน (ไม่รวมตารางห้อง/สถานที่)`}
+        sub={mine ? `${rows.length} คาบ/สัปดาห์ — เห็นเฉพาะตารางของคุณเอง` : `${rows.length} คาบ — จากชีต "ตารางรวมกีฬา" พร้อมกีฬาที่สอนในแต่ละคาบ`}
         right={
           <div className="flex items-center gap-2">
             {manager && (
@@ -2033,12 +2076,12 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
 
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
-          {!loaded ? "กำลังโหลดตารางสอน…" : mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
+          {!loaded ? "กำลังโหลดตารางสอน…" : !mine ? "ไม่พบข้อมูลในชีต \"ตารางรวมกีฬา\"" : mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
         </div>
       ) : mine ? (
         <ScheduleGrid rows={rows} onEdit={(s) => setEditRow(s)} onDelete={(s) => setConfirmDel(s)} />
       ) : (
-        <SportScheduleBoard rows={rows} canDelete={manager} onDelete={(s) => setConfirmDel(s)} />
+        <SportScheduleBoard rows={rows} />
       )}
 
       {mine && (myOtherTasks.length > 0 || budget.budgets.length > 0) && (
@@ -2141,23 +2184,46 @@ function isRoomScheduleRow(s) {
 }
 
 // ตารางรวมกีฬา — เลือกวัน แล้วแสดงทุกคาบของวันนั้น เรียงตามเวลา (อ่านง่ายบนมือถือ)
-function SportScheduleBoard({ rows, canDelete, onDelete }) {
+function SportScheduleBoard({ rows }) {
   const dayList = DAYS.slice(0, 6);
   const todayName = DAYS[(new Date().getDay() + 6) % 7];
   const [day, setDay] = useState(dayList.includes(todayName) ? todayName : dayList[0]);
   const [sport, setSport] = useState("");
-  const sports = useMemo(
-    () => [...new Set(rows.map((r) => r.dept || r.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, "th")),
-    [rows]
-  );
-  const dayRows = rows.filter((r) => r.day === day && (!sport || (r.dept || r.subject) === sport));
-  const bySlot = {};
-  dayRows.forEach((r) => { const k = `${r.start}–${r.end}`; (bySlot[k] = bySlot[k] || []).push(r); });
-  const slotKeys = Object.keys(bySlot).sort();
-  const countOf = (d) => rows.filter((r) => r.day === d && (!sport || (r.dept || r.subject) === sport)).length;
+
+  // สรุปกีฬาที่มีการสอนทั้งสัปดาห์: จำนวนคาบ + ครูผู้สอน + สถานที่
+  const sportSummary = useMemo(() => {
+    const m = new Map();
+    rows.forEach((r) => (r.sports || []).forEach((sp) => {
+      const x = m.get(sp.name) || { name: sp.name, periods: 0, teachers: new Set(), rooms: new Set(), days: new Set() };
+      x.periods += 1; x.teachers.add(sp.teacher); if (sp.room) x.rooms.add(sp.room); x.days.add(r.day);
+      m.set(sp.name, x);
+    }));
+    return [...m.values()].sort((a, b) => b.periods - a.periods);
+  }, [rows]);
+
+  const match = (r) => !sport || (r.sports || []).some((sp) => sp.name === sport);
+  const dayRows = rows.filter((r) => r.day === day && match(r)).sort((a, b) => a.start.localeCompare(b.start));
+  const countOf = (d) => rows.filter((r) => r.day === d && match(r)).length;
 
   return (
     <div className="mb-6">
+      {sportSummary.length > 0 && (
+        <div className="p-3 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
+          <div className="text-sm font-bold mb-2 flex items-center gap-1.5" style={{ color: C.navy }}><Trophy size={14} /> กีฬาที่มีการสอน ({sportSummary.length} กีฬา)</div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setSport("")} className="px-2.5 py-1.5 text-xs font-semibold"
+              style={!sport ? { background: C.navy, color: C.white } : { background: C.white, color: C.slate, border: `1px solid ${C.line}` }}>ทั้งหมด</button>
+            {sportSummary.map((x) => (
+              <button key={x.name} onClick={() => setSport(sport === x.name ? "" : x.name)} className="px-2.5 py-1.5 text-left"
+                style={sport === x.name ? { background: C.crimson, color: C.white } : { background: C.paper, color: C.ink, border: `1px solid ${C.line}` }}>
+                <div className="text-xs font-bold">{x.name} <span style={{ opacity: 0.75 }}>· {x.periods} คาบ/สัปดาห์</span></div>
+                <div className="text-[10px]" style={{ opacity: 0.8 }}>{[...x.teachers].join(", ")}{x.rooms.size ? ` · ${[...x.rooms].join(", ")}` : ""}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-1.5 mb-3 overflow-x-auto">
         {dayList.map((d) => (
           <button key={d} onClick={() => setDay(d)} className="px-3 py-1.5 text-xs font-semibold shrink-0"
@@ -2166,38 +2232,35 @@ function SportScheduleBoard({ rows, canDelete, onDelete }) {
           </button>
         ))}
       </div>
-      {sports.length > 1 && (
-        <select value={sport} onChange={(e) => setSport(e.target.value)} className="mb-3" style={inputStyle}>
-          <option value="">ทุกกีฬา/หน่วยงาน</option>
-          {sports.map((x) => <option key={x} value={x}>{x}</option>)}
-        </select>
-      )}
-      {slotKeys.length === 0 ? (
-        <div className="p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ไม่มีคาบในวัน{day}</div>
+
+      {dayRows.length === 0 ? (
+        <div className="p-6 text-center text-sm" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>ไม่มีคาบ{sport ? ` ${sport}` : ""}ในวัน{day}</div>
       ) : (
-        <div className="space-y-3">
-          {slotKeys.map((k) => (
-            <div key={k} style={{ background: C.white, border: `1px solid ${C.line}` }}>
-              <div className="px-3 py-1.5 text-xs font-semibold font-mono" style={{ background: C.paper, color: C.slate, borderBottom: `1px solid ${C.line}` }}>
-                {k}{bySlot[k][0].period === "AS" ? " · After School" : ""}
+        <div className="space-y-2">
+          {dayRows.map((r) => {
+            const col = dayColor(r.day);
+            return (
+              <div key={r.id} style={{ background: col.bg, borderLeft: `4px solid ${col.bar}` }}>
+                <div className="px-3 pt-2 flex items-baseline justify-between gap-2">
+                  <div className="text-xs font-bold font-mono" style={{ color: col.fg }}>
+                    {r.period === "AS" ? "After School" : `คาบ ${r.period}`} · {r.start}–{r.end}
+                  </div>
+                  <div className="text-[11px]" style={{ color: col.fg, opacity: 0.8 }}>{r.classes.length} ห้อง</div>
+                </div>
+                <div className="px-3 text-[11px]" style={{ color: col.fg }}>ห้องเรียน: {r.group || "-"}</div>
+                <div className="px-3 pb-2 pt-1.5 flex flex-wrap gap-1.5">
+                  {(r.sports || []).length === 0 ? (
+                    <span className="text-[11px]" style={{ color: col.fg, opacity: 0.7 }}>ยังไม่พบครู/กีฬาที่ตรงกับคาบนี้ในแท็บรายคน</span>
+                  ) : r.sports.map((sp) => (
+                    <span key={sp.teacher} className="px-2 py-1 text-[11px]" title={sp.classes.join(", ")}
+                      style={{ background: C.white, color: col.fg, border: `1px solid ${col.bar}`, fontWeight: sp.name === sport ? 700 : 500 }}>
+                      <b>{sp.name}</b> · {sp.teacher}{sp.room ? ` · ${sp.room}` : ""}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="p-2 space-y-1.5">
-                {bySlot[k].map((r) => {
-                  const col = dayColor(r.day);
-                  return (
-                    <div key={r.id} className="px-2.5 py-1.5 flex items-start justify-between gap-2" style={{ background: col.bg, borderLeft: `3px solid ${col.bar}` }}>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold truncate" style={{ color: col.fg }}>{r.dept && r.dept !== r.subject ? `${r.dept} · ${r.subject}` : r.subject}</div>
-                        <div className="text-[11px]" style={{ color: col.fg }}>{r.teacher}{r.loc ? ` · ${r.loc}` : ""}</div>
-                        {r.group && <div className="text-[11px]" style={{ color: col.fg, opacity: 0.8 }}>{r.group}</div>}
-                      </div>
-                      {canDelete && r._row && <button onClick={() => onDelete(r)} className="shrink-0"><X size={14} style={{ color: C.crimson }} /></button>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
