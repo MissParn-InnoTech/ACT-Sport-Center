@@ -72,7 +72,7 @@ const TEACHING_API_URL = "https://script.google.com/macros/s/AKfycbym8sgvcirl5Yo
 // ชื่อครูข้ามแหล่งข้อมูลที่สะกดคำนำหน้าไม่ตรงกัน (ชีตบุคลากร vs ชีตตารางสอน)
 function normTeacherName(s) {
   return String(s || "")
-    .replace(/(นางสาว|น\.ส\.|นาย|นาง|มิสเตอร์|มิส|คุณครู|ครู|ม\.)/g, "")
+    .replace(/(นางสาว|น\.ส\.|นาย|นาง|มาสเตอร์|เมสเตอร์|มิสเตอร์|มิส|คุณครู|ครู|ม\.)/g, "")
     .replace(/\s+/g, "")
     .trim();
 }
@@ -1034,7 +1034,7 @@ export default function App() {
           </div>
         )}
         <main className="flex-1 p-4 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: "calc(4.5rem + env(safe-area-inset-bottom))" }}>
-          {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} setTab={setTab} />}
+          {tab === "dashboard" && <Dashboard user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} repairs={repairs} pmSchedule={pmSchedule} docs={docs} schedule={allSchedule} setTab={setTab} />}
           {tab === "tasks" && <WorkManagement user={user} tasks={tasks} setTasks={setTasks} staffList={staffList} items={items} createTask={createTask} patchTask={patchTask} logAction={logAction} />}
           {tab === "inventory" && <Inventory user={user} items={items} setItems={setItems} logAction={logAction} />}
           {tab === "facility" && <Facility items={items} schedule={allSchedule} pmSchedule={pmSchedule} setTab={setTab} />}
@@ -1363,8 +1363,24 @@ function computeKpis(items, borrows) {
   return { total, normal, damaged, lost, disposed, activeBorrows, overdue, outOfStock, watch };
 }
 
-function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
+function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repairs = [], pmSchedule = [], docs = [], schedule = [], setTab }) {
   const k = computeKpis(items, borrows);
+  // ตัวชี้วัดระดับองค์กร — งาน/ซ่อมบำรุง/สถานที่ (ใช้ในภาพรวมของ L3/L4)
+  const orgKpis = useMemo(() => {
+    const active = tasks.filter((t) => t.status !== "COMPLETED" && t.status !== "CANCELLED");
+    const unassigned = active.filter((t) => !t.assignee).length;
+    const openRepairs = repairs.filter((r) => (r.status || "").toString().indexOf("เสร็จ") < 0 && (r.status || "").toString().toLowerCase() !== "done").length;
+    const pmSoon = pmSchedule.filter((p) => p.nextDate && p.nextDate >= TODAY_ISO && p.nextDate <= addDaysISO(30)).length;
+    // สถานที่ที่กำลังใช้งานอยู่ (real-time) — ประมาณจากตารางใช้ห้องของวัน/เวลาปัจจุบัน
+    const now = new Date();
+    const day = THAI_DAY_NOW[now.getDay()];
+    const nm = now.getHours() * 60 + now.getMinutes();
+    const inUse = new Set(schedule.filter((s) => s.day === day && (() => {
+      const st = toMinutes_(s.start), en = toMinutes_(s.end);
+      return st !== null && en !== null && nm >= st && nm < en;
+    })()).map((s) => s.loc)).size;
+    return { activeTasks: active.length, unassigned, openRepairs, pmSoon, inUse };
+  }, [tasks, repairs, pmSchedule, schedule]);
   const byCat = useMemo(() => {
     const m = {};
     items.forEach((i) => {
@@ -1440,10 +1456,16 @@ function Dashboard({ user, items, borrows, damages, tasks, setTab }) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <StatCard label="บุคลากร" value={staffList.length} sub="ที่ใช้งานระบบ" tone="navy" icon={Users} />
+        <StatCard label="สถานที่ใช้งานตอนนี้" value={orgKpis.inUse} sub={`${LOCATIONS.length} ห้อง/สนามทั้งหมด`} tone="gold" icon={MapPin} />
+        <StatCard label="ซ่อมบำรุงค้าง" value={orgKpis.openRepairs} sub={orgKpis.pmSoon > 0 ? `นัดใน 30 วัน: ${orgKpis.pmSoon}` : "ไม่มีนัดใน 30 วัน"} tone="crimson" icon={Wrench} />
+        <StatCard label="คลังความรู้" value={docs.length} sub="เอกสารในระบบ" tone="ok" icon={BookOpen} />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <StatCard label="งานที่เปิดอยู่ (ทั้งองค์กร)" value={orgKpis.activeTasks} sub={orgKpis.unassigned > 0 ? `${orgKpis.unassigned} ยังไม่ระบุผู้รับผิดชอบ` : "มอบหมายครบทุกงาน"} tone="navy" icon={ClipboardList} />
         <StatCard label="งานเกินกำหนด (ของฉัน)" value={taskCounts.overdue} tone="crimson" icon={AlertTriangle} />
         <StatCard label="ครบกำหนดวันนี้" value={taskCounts.today} tone="gold" icon={Clock} />
-        <StatCard label="กำลังจะถึง" value={taskCounts.upcoming} tone="navy" icon={CalendarDays} />
-        <StatCard label="เสร็จแล้ว" value={taskCounts.completed} tone="ok" icon={CheckCircle2} />
+        <StatCard label="เสร็จแล้ว (ของฉัน)" value={taskCounts.completed} tone="ok" icon={CheckCircle2} />
       </div>
 
       {(orgOverdueTasks.length > 0 || orgTodayTasks.length > 0 || orgCritical.length > 0) && (
@@ -1836,6 +1858,32 @@ function toMinutes_(hhmm) {
   return h * 60 + m;
 }
 
+// ไอคอน emoji ต่อสถานที่ — จับคู่จากคำในชื่อห้อง เช่น "สนามฟุตบอล" → ⚽
+function facilityIcon(name) {
+  const n = String(name || "");
+  if (/เทควันโด/.test(n)) return "🥋";
+  if (/มวย/.test(n)) return "🥊";
+  if (/ปีนหน้าผา|ปีนผา/.test(n)) return "🧗";
+  if (/เทเบิลเทนนิส|ปิงปอง/.test(n)) return "🏓";
+  if (/แบดมินตัน/.test(n)) return "🏸";
+  if (/เทนนิส/.test(n)) return "🎾";
+  if (/ฟุตซอล/.test(n)) return "⚽";
+  if (/ฟุตบอล/.test(n)) return "⚽";
+  if (/บาสเกตบอล|บาส/.test(n)) return "🏀";
+  if (/วอลเลย์บอล|วอลเล/.test(n)) return "🏐";
+  if (/กอล์ฟ/.test(n)) return "⛳";
+  if (/เต้น|แดนซ์|บัลเล่ต์/.test(n)) return "🩰";
+  if (/สระ|ว่ายน้ำ/.test(n)) return "🏊";
+  if (/ฟิตเนส|ยิม/.test(n)) return "💪";
+  if (/ยิมนาสติก/.test(n)) return "🤸";
+  if (/อารีน่า|arena/i.test(n)) return "🏟️";
+  if (/สำนักงาน|ธุรการ/.test(n)) return "🏢";
+  if (/กิจกรรม/.test(n)) return "🎉";
+  if (/เก็บของ|สโตร์|store/i.test(n)) return "📦";
+  if (/ห้องเรียน/.test(n)) return "🏫";
+  return "🏛️";
+}
+
 function Facility({ items, schedule = [], pmSchedule = [], setTab }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -1895,7 +1943,7 @@ function Facility({ items, schedule = [], pmSchedule = [], setTab }) {
             <div key={l.name} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${inUse ? C.gold : (l.damaged > l.ok * 0.3 && l.ok > 0 ? C.crimson : C.ok)}` }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <Building2 size={15} style={{ color: C.navy }} className="shrink-0" />
+                  <span aria-hidden className="shrink-0 text-lg leading-none" style={{ width: 22, textAlign: "center" }}>{facilityIcon(l.name)}</span>
                   <span className="font-bold text-sm truncate" style={{ color: C.ink }}>{l.name}</span>
                 </div>
                 {inUse ? (
@@ -2112,7 +2160,13 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
   //  L4 ผู้บริหาร — เห็น "ตารางรวมกีฬา" (ดูอย่างเดียว)
   const hasOwnSchedule = user.role === "L1" || user.role === "L2" || manager;
   const canSeeSport = manager || user.role === "L4";
-  const [managerViewMine, setManagerViewMine] = useState(true);
+  const myPeriodCount = useMemo(
+    () => schedule.filter((s) => normTeacherName(s.teacher) === normTeacherName(user.name)).length,
+    [schedule, user.name]
+  );
+  // หัวหน้าที่ไม่มีคาบสอนของตัวเอง — เปิดหน้าให้เจอ "ตารางรวมกีฬา" เลย
+  const [managerViewMine, setManagerViewMine] = useState(() => !manager || myPeriodCount > 0);
+  useEffect(() => { if (manager) setManagerViewMine(myPeriodCount > 0); }, [manager, myPeriodCount]);
   const mine = hasOwnSchedule && (!manager || managerViewMine);
   // เทียบชื่อครูแบบตัดคำนำหน้าออกก่อน (นาย/น.ส./มิส/ม./ครู ฯลฯ) เพราะชื่อครูผู้สอนที่
   // ดึงมาจากชีตตารางสอน (เช่น "ม.ชาญวิทย์ พึ่งอิ่ม") อาจสะกดคำนำหน้าไม่ตรงกับชื่อที่
