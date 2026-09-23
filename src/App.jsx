@@ -1268,7 +1268,8 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
             <span className="block w-5 h-0.5" style={{ background: C.ink }} />
           </div>
         </button>
-        <div className="min-w-0 flex-1 text-center px-2">
+        <div className="min-w-0 flex-1 flex items-center justify-center gap-2 px-2">
+          <img src="https://i.postimg.cc/nz2bfkgs/Beige-Minimal-Color-UI-Search-Page-Job-Portal-Website-Desktop-Prototype-(4).png" alt="ACT 1961 Sport Center" className="h-8 w-auto shrink-0" style={{ objectFit: "contain" }} />
           <div className="text-[11px] font-semibold tracking-wide truncate" style={{ color: meta.tint }}>{meta.dash}</div>
         </div>
         <button onClick={() => setTab("profile")} className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden" style={{ background: meta.tint }} aria-label="โปรไฟล์">
