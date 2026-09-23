@@ -1122,11 +1122,11 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         </div>
 
         {/* login column */}
-        <div className="relative z-10 flex-1 flex flex-col px-5 sm:px-6 min-[1080px]:px-14 py-5 min-[1080px]:pt-16 min-[1080px]:pb-10">
+        <div className="relative z-10 flex-1 flex flex-col justify-center px-5 sm:px-6 min-[1080px]:px-14 py-5 min-[1080px]:pt-16 min-[1080px]:pb-10">
           <h1 className="text-4xl min-[1080px]:text-6xl tracking-tight min-[1080px]:whitespace-nowrap mb-6 min-[1080px]:mb-10 shrink-0 text-center min-[1080px]:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)", fontFamily: "'Anton', sans-serif" }}>
             <span style={{ color: C.white }}>ACT</span> SPORT CENTER
           </h1>
-          <div className="flex-1 flex items-start min-[1080px]:items-center justify-center min-[1080px]:justify-start">
+          <div className="flex items-center justify-center min-[1080px]:justify-start">
           <div className="w-full max-w-md">
             <div className="flex items-center gap-3 mb-5 justify-center text-center min-[1080px]:justify-start min-[1080px]:text-left">
               <Users size={28} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
