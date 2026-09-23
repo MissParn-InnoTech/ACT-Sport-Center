@@ -62,7 +62,7 @@ const FONT = "'Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,s
    มาใส่ค่าด้านล่างนี้ — ถ้าเว้นว่างไว้ ระบบจะทำงานด้วยข้อมูลตัวอย่าง
    ในเครื่อง (seed data) เหมือนเดิม ไม่กระทบการใช้งาน
    ============================================================ */
-const API_URL = "https://script.google.com/macros/s/AKfycbyk-K8T2uIgWtyPeiltRbjzyyuuWFoA3al-9y-cJNW9ASgm3lSeRoesIbrF2Bhr9JW7lQ/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzjryObqjBJReU4wVUJ3WLUnzJEYWYyp2bUWTFxV86EtGNTihJO98yBy0TdUZ_ydI2JmQ/exec";
 
 // ตัดคำนำหน้าชื่อ (นาย/นาง/น.ส./นางสาว/มิส/ม./ครู/คุณครู) และช่องว่างออก เพื่อเทียบ
 // ชื่อครูข้ามแหล่งข้อมูลที่สะกดคำนำหน้าไม่ตรงกัน (ชีตบุคลากร vs ชีตตารางสอน)
