@@ -9,10 +9,11 @@ import {
   AlertTriangle, Clock, Plus, X, Eye, Pencil, ShieldCheck, TrendingUp,
   Building2, Shirt, Trophy, Download, Bell, ChevronDown, User, Users,
   ClipboardList, MessageSquare, UserCheck, Play, CalendarDays, ListChecks,
-  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock, Menu,
+  BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock, Menu, KeyRound, Languages, RefreshCw, Copy, EyeOff,
 } from "lucide-react";
 import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+import { applyLang, getLang } from "./i18n.js";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { th } from "date-fns/locale/th";
 
@@ -577,14 +578,6 @@ const STAFF = [
   { id: "60009", name: "นายมานิตย์ บุบผาสุข", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Power Fighting", phone: "090-9722716", level: "L1" },
 ];
 
-const USERS = [
-  { id: "T00500", name: "มิสสุพัตรา แสงทอง", role: "L0", dept: "กลุ่มสาระภาษาไทย (นอกสังกัดศูนย์กีฬา)", title: "ครูนอกสังกัดศูนย์กีฬา" },
-  { id: "T00212", name: "ม.อนุวัฒน์ เทพประเทียน", role: "L1", dept: "เทเบิลเทนนิส", title: "ครูผู้สอน" },
-  { id: "T00088", name: "มิสวรรณา จิรพลานุรักษ์", role: "L2", dept: "เทควันโด", title: "เจ้าหน้าที่ปฏิบัติการ" },
-  { id: "T00125", name: "ม.ชาญวิทย์ พึ่งอิ่ม", role: "L3", dept: "ศูนย์กีฬา", title: "หัวหน้าศูนย์กีฬา" },
-  { id: "T00004", name: "ดร.ประภาส วิริยะกิจ", role: "L4", dept: "ฝ่ายกิจการนักเรียน", title: "หัวหน้าฝ่ายกิจการนักเรียน" },
-];
-
 const ROLE_META = {
   L0: { label: "L0 · ครูนอกสังกัด", dash: "ยืม–คืนอุปกรณ์เท่านั้น", tint: C.crimson },
   L1: { label: "L1 · Teacher", dash: "MY WORKSPACE", tint: C.navySoft },
@@ -717,6 +710,157 @@ function Field({ label, children }) {
 const inputStyle = { border: `1px solid ${C.line}`, padding: "8px 10px", width: "100%", fontFamily: FONT, fontSize: 14, color: C.ink, background: C.white };
 
 /* ============================================================
+   LANGUAGE (TH / EN) + PASSWORD MANAGEMENT
+   ============================================================ */
+const LangContext = React.createContext({ lang: "th", setLang: () => {} });
+
+function LangToggle({ dark = true, className = "" }) {
+  const { lang, setLang } = React.useContext(LangContext);
+  const fg = dark ? "rgba(255,255,255,0.85)" : C.navy;
+  const border = dark ? "rgba(255,255,255,0.25)" : C.line;
+  return (
+    <div data-no-i18n className={`inline-flex items-center text-xs font-semibold shrink-0 ${className}`} style={{ border: `1px solid ${border}` }} title="ภาษา / Language">
+      <Languages size={13} style={{ color: fg, margin: "0 6px" }} />
+      {[["th", "ไทย"], ["en", "EN"]].map(([k, l]) => (
+        <button key={k} onClick={() => setLang(k)} className="px-2.5 py-1"
+          style={{ background: lang === k ? C.crimson : "transparent", color: lang === k ? C.white : fg }}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+const PW_RULE = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+function randomPassword() {
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz", digits = "23456789";
+  const pick = (set) => set[Math.floor((window.crypto?.getRandomValues(new Uint32Array(1))[0] ?? Math.random() * 1e9) % set.length)];
+  let out = pick(letters) + pick(digits);
+  for (let i = 0; i < 8; i++) out += pick(letters + digits);
+  return out.split("").sort(() => Math.random() - 0.5).join("");
+}
+
+function PwInput({ value, onChange, placeholder, autoComplete = "new-password" }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        autoComplete={autoComplete} style={{ ...inputStyle, paddingRight: 36 }} />
+      <button type="button" onClick={() => setShow((v) => !v)} className="absolute" style={{ right: 8, top: 9, color: C.slate }} aria-label="แสดงรหัสผ่าน">
+        {show ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+}
+
+// ผู้ใช้เปลี่ยนรหัสผ่านของตัวเอง (หรือถูกบังคับเปลี่ยนหลังหัวหน้ารีเซ็ตให้)
+function ChangePasswordModal({ user, onClose, forced = false, oldPassword = "" }) {
+  const [cur, setCur] = useState(oldPassword);
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [done, setDone] = useState(false);
+  const save = async () => {
+    setMsg("");
+    if (!cur) return setMsg("กรุณากรอกรหัสผ่านปัจจุบัน");
+    if (!PW_RULE.test(pw1)) return setMsg("รหัสผ่านอย่างน้อย 8 ตัว มีทั้งตัวอักษรและตัวเลข");
+    if (pw1 !== pw2) return setMsg("รหัสผ่านไม่ตรงกัน");
+    if (pw1 === cur) return setMsg("รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสเดิม");
+    setBusy(true);
+    try {
+      await postToSheetsAwait("pwChange", { username: user.id, oldPassword: cur, newPassword: pw1 });
+      setDone(true);
+    } catch (e) { setMsg(e.message || "เปลี่ยนรหัสผ่านไม่สำเร็จ"); }
+    setBusy(false);
+  };
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,26,62,0.55)" }}>
+      <div className="w-full flex flex-col" style={{ maxWidth: 380, maxHeight: "85dvh", background: C.white, border: `1px solid ${C.line}` }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${C.line}` }}>
+          <h3 className="font-bold text-base flex items-center gap-2" style={{ color: C.navy }}><KeyRound size={17} /> {forced ? "ตั้งรหัสผ่านใหม่" : "เปลี่ยนรหัสผ่าน"}</h3>
+          {!forced && <button onClick={onClose}><X size={18} style={{ color: C.slate }} /></button>}
+        </div>
+        <div className="px-5 py-4 overflow-y-auto">
+          {done ? (
+            <div>
+              <div className="p-3 mb-4 text-sm flex items-center gap-2" style={{ background: C.okBg, color: C.ok }}><CheckCircle2 size={16} /> เปลี่ยนรหัสผ่านสำเร็จ</div>
+              <Btn onClick={onClose}>ตกลง</Btn>
+            </div>
+          ) : (
+            <>
+              {forced && <div className="p-3 mb-3 text-xs" style={{ background: C.goldSoft, color: C.crimsonDeep }}>หัวหน้าได้รีเซ็ตรหัสผ่านของคุณ กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน</div>}
+              {!forced && <Field label="รหัสผ่านปัจจุบัน *"><PwInput value={cur} onChange={setCur} autoComplete="current-password" /></Field>}
+              <Field label="รหัสผ่านใหม่ *"><PwInput value={pw1} onChange={setPw1} /></Field>
+              <Field label="ยืนยันรหัสผ่านใหม่ *"><PwInput value={pw2} onChange={setPw2} /></Field>
+              <div className="text-xs mb-3" style={{ color: C.mute }}>รหัสผ่านอย่างน้อย 8 ตัว มีทั้งตัวอักษรและตัวเลข</div>
+              {msg && <div className="text-xs mb-3" style={{ color: C.crimson }}>{msg}</div>}
+              <Btn onClick={save} disabled={busy} icon={busy ? RefreshCw : KeyRound}>{busy ? "กำลังบันทึก..." : "บันทึกรหัสผ่านใหม่"}</Btn>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// หัวหน้า (L3) รีเซ็ตรหัสผ่านให้บุคลากร
+function ResetPasswordModal({ admin, target, onClose, logAction }) {
+  const [pw, setPw] = useState(() => randomPassword());
+  const [mustChange, setMustChange] = useState(true);
+  const [adminPw, setAdminPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [done, setDone] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const save = async () => {
+    setMsg("");
+    if (!PW_RULE.test(pw)) return setMsg("รหัสผ่านอย่างน้อย 8 ตัว มีทั้งตัวอักษรและตัวเลข");
+    if (!adminPw) return setMsg("กรุณากรอกรหัสผ่านของคุณเพื่อยืนยันตัวตน");
+    setBusy(true);
+    try {
+      await postToSheetsAwait("pwAdminReset", { adminUsername: admin.id, adminPassword: adminPw, targetUsername: target.id, newPassword: pw, mustChange });
+      logAction?.(`รีเซ็ตรหัสผ่าน: ${target.name} (${target.id})`);
+      setDone(true);
+    } catch (e) { setMsg(e.message || "รีเซ็ตรหัสผ่านไม่สำเร็จ"); }
+    setBusy(false);
+  };
+  const copy = () => { navigator.clipboard?.writeText(pw).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {}); };
+  return (
+    <Modal title="รีเซ็ตรหัสผ่าน" onClose={onClose}>
+      <div className="mb-3 p-3 text-sm" style={{ background: C.paper, border: `1px solid ${C.line}` }}>
+        <div className="font-semibold" style={{ color: C.ink }}>{target.name}</div>
+        <div className="text-xs" style={{ color: C.slate }}>Username: {target.id}</div>
+      </div>
+      {done ? (
+        <div>
+          <div className="p-3 mb-3 text-sm" style={{ background: C.okBg, color: C.ok }}>ตั้งรหัสผ่านใหม่เรียบร้อย — แจ้งรหัสนี้กับเจ้าของบัญชีโดยตรง</div>
+          <div className="flex items-center gap-2 mb-4">
+            <code data-no-i18n className="flex-1 px-3 py-2 text-base font-bold tracking-wider" style={{ background: C.paper, border: `1px solid ${C.line}`, color: C.navy }}>{pw}</code>
+            <Btn variant="ghost" small icon={Copy} onClick={copy}>{copied ? "คัดลอกแล้ว" : "คัดลอก"}</Btn>
+          </div>
+          <Btn onClick={onClose}>เสร็จสิ้น</Btn>
+        </div>
+      ) : (
+        <>
+          <Field label="รหัสผ่านใหม่ *">
+            <div className="flex gap-2">
+              <div className="flex-1"><PwInput value={pw} onChange={setPw} /></div>
+              <Btn variant="ghost" small icon={RefreshCw} onClick={() => setPw(randomPassword())}>สุ่มรหัสผ่าน</Btn>
+            </div>
+          </Field>
+          <label className="flex items-center gap-2 text-sm mb-3" style={{ color: C.ink }}>
+            <input type="checkbox" checked={mustChange} onChange={(e) => setMustChange(e.target.checked)} />
+            บังคับเปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งถัดไป
+          </label>
+          <Field label="รหัสผ่านของคุณ (ยืนยันตัวตนหัวหน้า) *"><PwInput value={adminPw} onChange={setAdminPw} autoComplete="current-password" /></Field>
+          {msg && <div className="text-xs mb-3" style={{ color: C.crimson }}>{msg}</div>}
+          <Btn variant="crimson" onClick={save} disabled={busy} icon={busy ? RefreshCw : KeyRound}>{busy ? "กำลังบันทึก..." : "ตั้งรหัสผ่านใหม่"}</Btn>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+/* ============================================================
    MAIN APP
    ============================================================ */
 export default function App() {
@@ -742,6 +886,9 @@ export default function App() {
   const [docs, setDocs] = useState([]);
 
   const [sheetsError, setSheetsError] = useState("");
+  const [lang, setLang] = useState(getLang());
+  useEffect(() => { applyLang(lang); }, [lang]);
+  const [forcePw, setForcePw] = useState(null); // { oldPassword } เมื่อบัญชีถูกรีเซ็ตรหัสผ่าน
   const [scheduleWarnings, setScheduleWarnings] = useState(() => readScheduleCache().warnings || []);
   // ตารางสอนจากชีตรายครู เก็บแยกจาก schedule หลัก แล้วรวมกันตอนแสดงผล
   // (โหลดพร้อมกันได้ ไม่ต้องรอกัน และไม่เขียนทับกัน)
@@ -796,11 +943,6 @@ export default function App() {
   useEffect(() => { if (!loading) window.storage?.set("actions", JSON.stringify(actionsLog), true).catch(() => {}); }, [actionsLog, loading]);
 
   const handleLogin = async (id, password) => {
-    // demo/sample accounts always work by ID alone, regardless of password —
-    // they're for showing off each role's view, not real accounts
-    const demo = USERS.find((x) => x.id.toLowerCase() === id.trim().toLowerCase());
-    if (demo) { setUser(demo); setTab("profile"); setLoginErr(""); return; }
-
     // real staff: verify username + password server-side against "9.บุคลากร"
     if (API_URL) {
       try {
@@ -809,6 +951,8 @@ export default function App() {
         const role = ["L0", "L1", "L2", "L3", "L4"].includes(u.role) ? u.role : "L1";
         setUser({ id: u.id, name: u.name, role, dept: u.dept, title: u.dept, photoUrl: u.photoUrl || "", phone: u.phone || "" });
         setTab("profile"); setLoginErr("");
+        // รหัสผ่านที่หัวหน้ารีเซ็ตให้ → บังคับตั้งรหัสใหม่ก่อนใช้งาน
+        if (u.mustChange) setForcePw({ oldPassword: password || "" });
         return;
       } catch (e) {
         setLoginErr(e.message || "Username หรือ Password ไม่ถูกต้อง");
@@ -824,7 +968,7 @@ export default function App() {
       setTab("profile"); setLoginErr("");
       return;
     }
-    setLoginErr("ไม่พบรหัสครู (Teacher ID) นี้ในระบบ — ลองเลือกบัญชีตัวอย่างด้านล่าง");
+    setLoginErr("ไม่พบรหัสครู (Teacher ID) นี้ในระบบ");
   };
 
   const logAction = useCallback((text) => {
@@ -874,11 +1018,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, loading, borrows.length, tasks.length]);
 
-  if (!user) return <LoginScreen loginId={loginId} setLoginId={setLoginId} onLogin={handleLogin} err={loginErr} />;
+  if (!user) return <LangContext.Provider value={{ lang, setLang }}><LoginScreen loginId={loginId} setLoginId={setLoginId} onLogin={handleLogin} err={loginErr} /></LangContext.Provider>;
 
   const nav = NAV[user.role];
 
   return (
+    <LangContext.Provider value={{ lang, setLang }}>
     <div className="app-shell app-shell-auth" style={{ fontFamily: FONT, background: C.paper, color: C.ink }}>
       <Sidebar user={user} nav={nav} tab={tab} setTab={setTab} onLogout={() => setUser(null)} />
       <div className="app-shell-main-col">
@@ -909,7 +1054,9 @@ export default function App() {
         </main>
         <BottomNav nav={nav} tab={tab} setTab={setTab} />
       </div>
+      {forcePw && <ChangePasswordModal user={user} forced oldPassword={forcePw.oldPassword} onClose={() => setForcePw(null)} />}
     </div>
+    </LangContext.Provider>
   );
 }
 
@@ -932,10 +1079,12 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
           <img src={LOGO_URL} alt="ACT 1961 Sport Center" className="h-10 md:h-14 w-auto shrink-0" style={{ objectFit: "contain" }} />
         </div>
         <nav className="hidden md:flex items-center gap-8 ml-auto">
+          <LangToggle />
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
           <span className="px-5 py-2 text-sm font-semibold" style={{ background: C.crimson, color: C.white }}>Contact</span>
         </nav>
+        <LangToggle className="md:hidden ml-auto mr-1" />
         <button onClick={() => setNavOpen((v) => !v)} className="md:hidden w-11 h-11 flex items-center justify-center shrink-0" aria-label="เมนู">
           <Menu size={22} color="rgba(255,255,255,0.85)" />
         </button>
@@ -1044,23 +1193,6 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
               <br />Developer : P.Prayoon-Anutep
             </div>
 
-            {/* demo accounts */}
-            <div className="mt-8 pt-6" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
-              <div className="text-xs font-semibold mb-3" style={{ color: "rgba(255,255,255,0.45)" }}>บัญชีตัวอย่างสำหรับสาธิตแต่ละระดับสิทธิ์</div>
-              <div className="space-y-2">
-                {USERS.map((u) => (
-                  <button key={u.id} onClick={() => onLogin(u.id)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 text-left"
-                    style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)" }}>
-                    <div>
-                      <div className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>{u.name}</div>
-                      <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{u.title} · {u.id}</div>
-                    </div>
-                    <Pill fg={C.accent} bg="rgba(228,53,79,0.12)">{ROLE_META[u.role].label}</Pill>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
           </div>
         </div>
@@ -1110,10 +1242,11 @@ function Sidebar({ user, nav, tab, setTab, onLogout }) {
           </div>
         ))}
       </nav>
-      <div className="px-5 py-4 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+      <div className="px-5 py-4 shrink-0 flex items-center justify-between gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
         <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
           <LogOut size={13} /> ออกจากระบบ
         </button>
+        <LangToggle />
       </div>
     </aside>
   );
@@ -1178,10 +1311,11 @@ function TopBar({ user, nav, tab, setTab, onLogout }) {
                 </div>
               ))}
             </nav>
-            <div className="px-5 py-4 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+            <div className="px-5 py-4 shrink-0 flex items-center justify-between gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
               <button onClick={onLogout} className="flex items-center gap-2 text-xs" style={{ color: "#93A0C4" }}>
                 <LogOut size={13} /> ออกจากระบบ
               </button>
+              <LangToggle />
             </div>
           </div>
           <div className="flex-1" style={{ background: "rgba(0,0,0,0.5)" }} />
@@ -1827,7 +1961,9 @@ function StaffDirectory({ staff, setStaffList, user, logAction }) {
   const [edit, setEdit] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [resetPw, setResetPw] = useState(null);
   const manager = canManage(user.role);
+  const isHead = user.role === "L3"; // จัดการรหัสผ่านได้เฉพาะหัวหน้า
   const depts = useMemo(() => Array.from(new Set(staff.map((s) => s.dept))), [staff]);
   const filtered = staff.filter((s) =>
     (dept === "ALL" || s.dept === dept) &&
@@ -1886,6 +2022,7 @@ function StaffDirectory({ staff, setStaffList, user, logAction }) {
               </div>
               {manager && (
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {isHead && <button onClick={() => setResetPw(s)} title="รีเซ็ตรหัสผ่าน"><KeyRound size={13} style={{ color: C.gold }} /></button>}
                   <button onClick={() => setEdit(s)}><Pencil size={13} style={{ color: C.navy }} /></button>
                   <button onClick={() => setConfirmDel(s)}><X size={13} style={{ color: C.crimson }} /></button>
                 </div>
@@ -1910,6 +2047,7 @@ function StaffDirectory({ staff, setStaffList, user, logAction }) {
           <StaffForm initial={{ id: "", name: "", dept: "", role: "", phone: "", level: "L1" }} onSave={addStaff} idEditable />
         </Modal>
       )}
+      {resetPw && <ResetPasswordModal admin={user} target={resetPw} onClose={() => setResetPw(null)} logAction={logAction} />}
       {confirmDel && (
         <Modal title="ยืนยันการลบ" onClose={() => setConfirmDel(null)}>
           <p className="text-sm mb-4" style={{ color: C.ink }}>ต้องการลบ <b>{confirmDel.name}</b> ออกจากทำเนียบบุคลากรใช่หรือไม่? การลบนี้จะลบแถวออกจาก Google Sheet ด้วย และย้อนกลับไม่ได้</p>
@@ -4156,6 +4294,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
   const [err, setErr] = useState("");
   const [selectedDay, setSelectedDay] = useState(null); // null = today
   const [showEditInfo, setShowEditInfo] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const meta = ROLE_META[user.role];
 
   const myTasks = tasks.filter((t) => t.assignee === user.name || t.createdBy === user.name);
@@ -4221,6 +4360,7 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
   return (
     <div>
       <SectionHead eyebrow="PROFILE" title="โปรไฟล์ของฉัน" sub="ข้อมูลส่วนตัวและทางลัดไปยังงานของคุณ" />
+      {showPw && <ChangePasswordModal user={user} onClose={() => setShowPw(false)} />}
 
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="p-5 flex flex-col items-center text-center" style={{ background: C.white, border: `1px solid ${C.line}` }}>
@@ -4255,7 +4395,13 @@ function ProfilePage({ user, setUser, staffList, setStaffList, tasks, schedule, 
       </div>
 
       <div className="p-5 mb-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-        <h3 className="text-sm font-bold mb-4" style={{ color: C.navy }}>ข้อมูลของฉัน</h3>
+        <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+          <h3 className="text-sm font-bold" style={{ color: C.navy }}>ข้อมูลของฉัน</h3>
+          <div className="flex items-center gap-2">
+            <LangToggle dark={false} />
+            {API_URL && <Btn variant="ghost" small icon={KeyRound} onClick={() => setShowPw(true)}>เปลี่ยนรหัสผ่าน</Btn>}
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div><div className="text-xs" style={{ color: C.mute }}>Teacher ID</div><div className="font-mono font-medium" style={{ color: C.ink }}>{user.id}</div></div>
           <div><div className="text-xs" style={{ color: C.mute }}>หน่วยงาน</div><div className="font-medium" style={{ color: C.ink }}>{user.dept || "-"}</div></div>

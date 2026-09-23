@@ -7,6 +7,10 @@
  *   listPortfolio / addPortfolio / deletePortfolio
  *                      — โปรไฟล์: แฟ้มผลงาน (พัฒนาตนเอง/รางวัล/พาไปแข่งขัน/รางวัลนักเรียน)
  *                        เก็บในแท็บ "ผลงานบุคลากร" (สร้างให้อัตโนมัติ)
+ *   login (override)   — ถ้าบัญชีตั้งรหัสผ่านใหม่แล้ว ตรวจกับรหัสที่เข้ารหัส (hash) ในแท็บ
+ *                        "บัญชีรหัสผ่าน"; ถ้ายังไม่เคยตั้ง จะส่งต่อให้ login เดิมใน Code.gs
+ *   pwChange           — ผู้ใช้เปลี่ยนรหัสผ่านของตัวเอง
+ *   pwAdminReset       — หัวหน้า (Level L3) รีเซ็ตรหัสผ่านให้บุคลากร (ต้องยืนยันรหัสผ่านตัวเอง)
  *
  * ติดตั้ง (ครั้งเดียว):
  *   1) สร้างไฟล์ใหม่ชื่อ Extras แล้ววางโค้ดนี้
@@ -40,14 +44,23 @@ function handleExtraPost_(e) {
     listPortfolio: extraListPortfolio_,
     addPortfolio: extraAddPortfolio_,
     deletePortfolio: extraDeletePortfolio_,
+    login: pwLogin_,
+    pwChange: pwChange_,
+    pwAdminReset: pwAdminReset_,
   };
   const fn = body && handlers[body.action];
   if (!fn) return null; // ไม่ใช่ action ของไฟล์นี้ → ให้ Code.gs ทำงานต่อตามปกติ
   let out;
   try {
-    const lock = LockService.getScriptLock();
-    lock.waitLock(20000);
-    try { out = { ok: true, result: fn(body.payload || {}) }; } finally { lock.releaseLock(); }
+    if (body.action === 'login') {
+      const r = fn(body.payload || {});
+      if (r === PW_PASS_THROUGH) return null; // ยังไม่เคยตั้งรหัสใหม่ → ใช้ login เดิมของ Code.gs
+      out = { ok: true, result: r };
+    } else {
+      const lock = LockService.getScriptLock();
+      lock.waitLock(20000);
+      try { out = { ok: true, result: fn(body.payload || {}) }; } finally { lock.releaseLock(); }
+    }
   } catch (err) {
     out = { ok: false, error: String((err && err.message) || err) };
   }
@@ -210,4 +223,192 @@ function testExtras() {
   const r = extraFindSheet_(['ร้าน/ช่าง', 'วันที่ซ่อม']);
   Logger.log('ชีตคลังความรู้: ' + (d ? d.getName() : 'ไม่พบ'));
   Logger.log('ชีตประวัติซ่อม: ' + (r ? r.getName() : 'ไม่พบ'));
+}
+
+
+/* ================================================================
+   การจัดการรหัสผ่าน
+   - เก็บรหัสผ่านแบบเข้ารหัสทางเดียว (SHA-256 + salt) ในแท็บ "บัญชีรหัสผ่าน"
+     (ไม่มีใครอ่านรหัสผ่านจริงได้ แม้เปิดชีต)
+   - บัญชีที่ยังไม่เคยตั้งรหัสใหม่ ใช้ Username/Password เดิมในแท็บ "User"
+   - เมื่อตั้งรหัสใหม่แล้ว รหัสเดิมในแท็บ User จะถูกล้างทิ้ง
+   ================================================================ */
+var PW_SHEET = 'บัญชีรหัสผ่าน';
+var PW_FIELDS = ['Username', 'Salt', 'Hash', 'บังคับเปลี่ยน', 'แก้ไขล่าสุด', 'แก้ไขโดย'];
+var PW_ROUNDS = 300;
+var PW_PASS_THROUGH = { __pass: true };
+
+function pwSheet_() {
+  const ss = extraSpreadsheet_();
+  let sh = ss.getSheetByName(PW_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(PW_SHEET);
+    sh.getRange(1, 1, 1, PW_FIELDS.length).setValues([PW_FIELDS]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    try { sh.hideSheet(); } catch (e) { /* ignore */ }
+  }
+  return sh;
+}
+
+function pwNorm_(u) { return String(u == null ? '' : u).trim().toLowerCase(); }
+
+function pwHash_(salt, password) {
+  let h = salt + '|' + password;
+  for (let i = 0; i < PW_ROUNDS; i++) {
+    const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, h, Utilities.Charset.UTF_8);
+    h = bytes.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+  }
+  return h;
+}
+
+function pwFindRecord_(username) {
+  const sh = pwSheet_();
+  const last = sh.getLastRow();
+  if (last < 2) return null;
+  const vals = sh.getRange(2, 1, last - 1, PW_FIELDS.length).getValues();
+  const key = pwNorm_(username);
+  for (let i = 0; i < vals.length; i++) {
+    if (pwNorm_(vals[i][0]) === key) {
+      return { row: i + 2, username: String(vals[i][0]), salt: String(vals[i][1]), hash: String(vals[i][2]), mustChange: vals[i][3] === true || String(vals[i][3]).toUpperCase() === 'TRUE' };
+    }
+  }
+  return null;
+}
+
+function pwWriteRecord_(username, password, mustChange, by) {
+  const sh = pwSheet_();
+  const salt = Utilities.getUuid();
+  const row = [String(username), salt, pwHash_(salt, password), !!mustChange, new Date(), String(by || '')];
+  const rec = pwFindRecord_(username);
+  if (rec) sh.getRange(rec.row, 1, 1, row.length).setValues([row]);
+  else sh.appendRow(row);
+  pwClearLegacy_(username);
+}
+
+// แท็บ User: หัวตารางอยู่แถวที่ 2 (มีคอลัมน์ ID / Username / Password)
+function pwLegacyTable_() {
+  const sh = extraSpreadsheet_().getSheetByName('User');
+  if (!sh || sh.getLastRow() < 3) return null;
+  const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
+  for (let r = 0; r < Math.min(5, vals.length); r++) {
+    const head = vals[r].map(function (h) { return String(h).trim(); });
+    const iu = head.indexOf('Username'), ip = head.indexOf('Password');
+    if (iu >= 0 && ip >= 0) return { sh: sh, vals: vals, headRow: r, iu: iu, ip: ip, iid: head.indexOf('ID') };
+  }
+  return null;
+}
+
+function pwLegacyRow_(t, username) {
+  const key = pwNorm_(username);
+  for (let r = t.headRow + 1; r < t.vals.length; r++) {
+    const row = t.vals[r];
+    if (pwNorm_(row[t.iu]) === key || (t.iid >= 0 && pwNorm_(row[t.iid]) === key)) return r;
+  }
+  return -1;
+}
+
+function pwLegacyCheck_(username, password) {
+  const t = pwLegacyTable_();
+  if (!t) return false;
+  const r = pwLegacyRow_(t, username);
+  return r >= 0 && String(t.vals[r][t.ip]) !== '' && String(t.vals[r][t.ip]) === String(password);
+}
+
+function pwClearLegacy_(username) {
+  const t = pwLegacyTable_();
+  if (!t) return;
+  const r = pwLegacyRow_(t, username);
+  if (r >= 0) t.sh.getRange(r + 1, t.ip + 1).setValue('(ตั้งรหัสใหม่แล้ว)');
+}
+
+// ตรวจรหัสผ่าน: ถ้ามีรหัสใหม่ใช้ hash, ถ้าไม่มีใช้รหัสเดิมในแท็บ User
+function pwVerify_(username, password) {
+  const rec = pwFindRecord_(username);
+  if (rec) return pwHash_(rec.salt, String(password)) === rec.hash;
+  return pwLegacyCheck_(username, password);
+}
+
+// จำกัดการเดารหัส: ผิดเกิน 5 ครั้งใน 10 นาที → ล็อกชั่วคราว
+function pwThrottle_(username, failed) {
+  const cache = CacheService.getScriptCache();
+  const key = 'pwfail_' + pwNorm_(username);
+  const n = Number(cache.get(key) || 0);
+  if (failed === undefined) { if (n >= 5) throw new Error('ใส่รหัสผ่านผิดหลายครั้ง กรุณารอ 10 นาทีแล้วลองใหม่'); return; }
+  if (failed) cache.put(key, String(n + 1), 600); else cache.remove(key);
+}
+
+// ข้อมูลบุคลากรจากแท็บ 9.บุคลากร
+function pwStaff_(username) {
+  const sh = extraFindSheet_(['ID', 'ชื่อ', 'Level']);
+  if (!sh) return null;
+  const vals = sh.getDataRange().getDisplayValues();
+  const head = vals[0].map(function (h) { return String(h).trim(); });
+  const col = function (names) { for (let i = 0; i < names.length; i++) { const k = head.indexOf(names[i]); if (k >= 0) return k; } return -1; };
+  const c = { id: col(['ID']), name: col(['ชื่อ']), dept: col(['หน่วยงาน']), role: col(['หน้าที่']), phone: col(['เบอร์โทร']), level: col(['Level']), photo: col(['รูปโปรไฟล์', 'รูป', 'Photo', 'photoUrl', 'PhotoURL']) };
+  let key = pwNorm_(username);
+  // Username ในแท็บ User อาจไม่ใช่ ID → แปลงเป็น ID ก่อน
+  const t = pwLegacyTable_();
+  if (t && t.iid >= 0) { const r = pwLegacyRow_(t, username); if (r >= 0) key = pwNorm_(t.vals[r][t.iid]); }
+  for (let r = 1; r < vals.length; r++) {
+    if (pwNorm_(vals[r][c.id]) === key) {
+      const g = function (k) { return c[k] >= 0 ? String(vals[r][c[k]]).trim() : ''; };
+      return { id: g('id'), name: g('name'), dept: g('dept'), title: g('role'), phone: g('phone'), role: g('level') || 'L1', photoUrl: g('photo') };
+    }
+  }
+  return null;
+}
+
+function pwLogin_(p) {
+  const username = String(p.username || '').trim();
+  const rec = pwFindRecord_(username);
+  if (!rec) return PW_PASS_THROUGH;
+  pwThrottle_(username);
+  const ok = pwHash_(rec.salt, String(p.password || '')) === rec.hash;
+  pwThrottle_(username, !ok);
+  if (!ok) throw new Error('Username หรือ Password ไม่ถูกต้อง');
+  const staff = pwStaff_(username);
+  if (!staff) throw new Error('ไม่พบบัญชีผู้ใช้นี้');
+  staff.mustChange = rec.mustChange;
+  return { user: staff };
+}
+
+function pwCheckStrength_(pw) {
+  if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(pw || ''))) throw new Error('รหัสผ่านอย่างน้อย 8 ตัว มีทั้งตัวอักษรและตัวเลข');
+}
+
+function pwChange_(p) {
+  const username = String(p.username || '').trim();
+  if (!username) throw new Error('ไม่พบบัญชีผู้ใช้นี้');
+  pwThrottle_(username);
+  const ok = pwVerify_(username, p.oldPassword);
+  pwThrottle_(username, !ok);
+  if (!ok) throw new Error('รหัสผ่านปัจจุบันไม่ถูกต้อง');
+  pwCheckStrength_(p.newPassword);
+  if (String(p.newPassword) === String(p.oldPassword)) throw new Error('รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสเดิม');
+  pwWriteRecord_(username, String(p.newPassword), false, username);
+  return { changed: true };
+}
+
+function pwAdminReset_(p) {
+  const admin = String(p.adminUsername || '').trim();
+  const target = String(p.targetUsername || '').trim();
+  pwThrottle_(admin);
+  const ok = pwVerify_(admin, p.adminPassword);
+  pwThrottle_(admin, !ok);
+  if (!ok) throw new Error('รหัสผ่านของหัวหน้าไม่ถูกต้อง');
+  const a = pwStaff_(admin);
+  if (!a || a.role !== 'L3') throw new Error('ต้องเป็นหัวหน้า (L3) เท่านั้น');
+  if (!pwStaff_(target)) throw new Error('ไม่พบบัญชีผู้ใช้นี้');
+  pwCheckStrength_(p.newPassword);
+  pwWriteRecord_(target, String(p.newPassword), p.mustChange !== false, a.id + ' ' + a.name);
+  CacheService.getScriptCache().remove('pwfail_' + pwNorm_(target));
+  return { reset: true };
+}
+
+/* ทดสอบใน editor: ตรวจว่าเจอแท็บ User / 9.บุคลากร (ไม่เปลี่ยนรหัสใคร) */
+function testPasswords() {
+  const t = pwLegacyTable_();
+  Logger.log('แท็บ User: ' + (t ? 'พบ (' + (t.vals.length - t.headRow - 1) + ' แถว)' : 'ไม่พบ'));
+  Logger.log('แท็บบุคลากร: ' + (extraFindSheet_(['ID', 'ชื่อ', 'Level']) ? 'พบ' : 'ไม่พบ'));
+  Logger.log('แท็บ ' + PW_SHEET + ': ' + (pwSheet_().getLastRow() - 1) + ' บัญชีที่ตั้งรหัสใหม่แล้ว');
 }
