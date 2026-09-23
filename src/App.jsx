@@ -903,7 +903,7 @@ export default function App() {
           {tab === "budget" && <BudgetView user={user} staffList={staffList} logAction={logAction} />}
           {tab === "borrow" && <Borrowing user={user} items={items} setItems={setItems} borrows={borrows} setBorrows={setBorrows} logAction={logAction} />}
           {tab === "damage" && <DamageMaint user={user} items={items} setItems={setItems} damages={damages} setDamages={setDamages} setTasks={setTasks} logAction={logAction} />}
-          {tab === "analytics" && <Analytics items={items} />}
+          {tab === "analytics" && <Analytics user={user} items={items} borrows={borrows} damages={damages} tasks={tasks} staffList={staffList} schedule={allSchedule} combinedSport={combinedSport} repairs={repairs} pmSchedule={pmSchedule} docs={docs} setTab={setTab} />}
           {tab === "reports" && <Reports items={items} borrows={borrows} damages={damages} />}
           {tab === "actions" && <ManagementActions user={user} items={items} setItems={setItems} actionsLog={actionsLog} logAction={logAction} />}
         </main>
@@ -931,7 +931,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         <div className="flex items-center gap-3 min-w-0">
           <img src={LOGO_URL} alt="ACT 1961 Sport Center" className="h-10 md:h-14 w-auto shrink-0" style={{ objectFit: "contain" }} />
         </div>
-        <nav className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+        <nav className="hidden md:flex items-center gap-8 ml-auto">
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
           <span className="px-5 py-2 text-sm font-semibold" style={{ background: C.crimson, color: C.white }}>Contact</span>
@@ -939,7 +939,6 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         <button onClick={() => setNavOpen((v) => !v)} className="md:hidden w-11 h-11 flex items-center justify-center shrink-0" aria-label="เมนู">
           <Menu size={22} color="rgba(255,255,255,0.85)" />
         </button>
-        <div className="hidden lg:block text-4xl font-black tracking-widest select-none shrink-0" style={{ color: "rgba(255,255,255,0.12)", letterSpacing: "0.15em" }}>ACT</div>
         {navOpen && (
           <div className="md:hidden absolute top-full left-0 right-0 z-20 flex flex-col" style={{ background: "#2a2a2c", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
             <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
@@ -975,9 +974,8 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
         {/* login column */}
         <div className="relative z-10 flex-1 flex flex-col px-5 sm:px-6 md:px-14 py-5 md:pt-16 md:pb-10">
-          <h1 className="text-4xl md:text-6xl tracking-tight mb-6 md:mb-10 shrink-0 text-center md:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)", fontFamily: "'Anton', sans-serif" }}>
-            <span className="block md:hidden" style={{ color: "rgba(255,255,255,0.85)" }}>ACT</span>
-            SPORT CENTER
+          <h1 className="text-4xl md:text-6xl tracking-tight md:whitespace-nowrap mb-6 md:mb-10 shrink-0 text-center md:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)", fontFamily: "'Anton', sans-serif" }}>
+            <span style={{ color: C.white }}>ACT</span> SPORT CENTER
           </h1>
           <div className="flex-1 flex items-start md:items-center justify-center md:justify-start">
           <div className="w-full max-w-md">
@@ -2406,7 +2404,7 @@ function Borrowing({ user, items, setItems, borrows, setBorrows, logAction }) {
   const submit = ({ itemId, qty, where, purpose, due }) => {
     const item = items.find((i) => i.id === itemId);
     if (!item) return;
-    const rec = { id: `BR-${Date.now()}`, date: "2026-09-15", borrower: user.name, itemId, itemCode: item.code, itemName: item.name, qty, where, purpose, due, returned: null, status: "borrowed" };
+    const rec = { id: `BR-${Date.now()}`, date: todayISO(), borrower: user.name, itemId, itemCode: item.code, itemName: item.name, qty, where, purpose, due, returned: null, status: "borrowed" };
     setBorrows((p) => [rec, ...p]);
     setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, borrowed: i.borrowed + qty } : i)));
     logAction(`บันทึกการยืม ${item.code} จำนวน ${qty}`);
@@ -2415,7 +2413,7 @@ function Borrowing({ user, items, setItems, borrows, setBorrows, logAction }) {
   };
 
   const markReturned = (b) => {
-    const returnedDate = "2026-09-15";
+    const returnedDate = todayISO();
     setBorrows((p) => p.map((x) => (x.id === b.id ? { ...x, status: "returned", returned: returnedDate } : x)));
     setItems((prev) => prev.map((i) => (i.id === b.itemId ? { ...i, borrowed: Math.max(0, i.borrowed - b.qty) } : i)));
     logAction(`บันทึกการคืน ${b.itemCode}`);
@@ -2426,7 +2424,7 @@ function Borrowing({ user, items, setItems, borrows, setBorrows, logAction }) {
 
   return (
     <div>
-      <SectionHead eyebrow="BORROWING" title="ยืม–คืนอุปกรณ์" sub="Request → Approved → Borrowed → Return"
+      <SectionHead eyebrow="BORROWING" title="ยืม–คืนอุปกรณ์" sub="ขั้นตอน: บันทึกการยืม → ใช้งาน → บันทึกการคืน"
         right={<Btn onClick={() => setShowNew(true)} icon={Plus}>บันทึกการยืมใหม่</Btn>} />
 
       <div className="table-scroll" style={{ border: `1px solid ${C.line}`, background: C.white }}>
@@ -2440,7 +2438,7 @@ function Borrowing({ user, items, setItems, borrows, setBorrows, logAction }) {
           </thead>
           <tbody>
             {borrows.map((b) => {
-              const overdue = b.status === "borrowed" && new Date(b.due) < new Date("2026-09-15");
+              const overdue = b.status === "borrowed" && b.due && b.due < todayISO();
               return (
                 <tr key={b.id} style={{ borderTop: `1px solid ${C.line}` }}>
                   <td className="px-3 py-2 text-xs">{b.date}</td>
@@ -2476,29 +2474,58 @@ function Borrowing({ user, items, setItems, borrows, setBorrows, logAction }) {
   );
 }
 
+// วันที่วันนี้ตามเวลาเครื่อง (YYYY-MM-DD)
+function todayISO() { return new Date().toLocaleDateString("sv-SE"); }
+function addDaysISO(n) { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString("sv-SE"); }
+
+// ข้อความมาตรฐานของการยืม — เลือกจากรายการแทนการพิมพ์เอง ให้ข้อมูลสม่ำเสมอ นำไปวิเคราะห์/รายงานได้
+const BORROW_PURPOSES = ["การเรียนการสอน", "ฝึกซ้อมนักกีฬา", "การแข่งขัน", "กิจกรรมโรงเรียน", "หน่วยงานภายนอกขอยืม", "ซ่อมบำรุง/ตรวจสอบ", "อื่นๆ"];
+const OTHER = "อื่นๆ";
+
 function BorrowForm({ available, onSubmit }) {
   const [itemId, setItemId] = useState(available[0]?.id || "");
   const [qty, setQty] = useState(1);
-  const [where, setWhere] = useState("");
-  const [purpose, setPurpose] = useState("");
-  const [due, setDue] = useState("2026-09-22");
+  const [where, setWhere] = useState(LOCATIONS[0].name);
+  const [whereOther, setWhereOther] = useState("");
+  const [purpose, setPurpose] = useState(BORROW_PURPOSES[0]);
+  const [detail, setDetail] = useState(""); // เช่น ชั้น/ห้องเรียน หรือชื่อรายการแข่งขัน
+  const [due, setDue] = useState(addDaysISO(7));
   const chosen = available.find((i) => i.id === itemId);
   const max = chosen ? chosen.normal - chosen.borrowed : 1;
+  const place = where === OTHER ? whereOther.trim() : where;
+  const needsDetail = purpose === OTHER;
+  const purposeText = detail.trim() ? `${purpose} — ${detail.trim()}` : purpose;
+  const valid = chosen && qty >= 1 && place && due && (!needsDetail || detail.trim());
+  const detailHint = { "การเรียนการสอน": "เช่น ป.5/2 คาบ 3", "ฝึกซ้อมนักกีฬา": "เช่น ทีมฟุตซอล ม.ต้น", "การแข่งขัน": "เช่น กีฬาสีภายใน 2569", "กิจกรรมโรงเรียน": "เช่น ACT College Day", "หน่วยงานภายนอกขอยืม": "ชื่อหน่วยงาน/ผู้ติดต่อ" }[purpose] || "ระบุรายละเอียด";
   return (
     <div>
-      <Field label="อุปกรณ์">
+      <Field label="อุปกรณ์ *">
         <select value={itemId} onChange={(e) => setItemId(e.target.value)} style={inputStyle}>
           {available.map((i) => <option key={i.id} value={i.id}>{i.code} — {i.name} (พร้อมใช้ {i.normal - i.borrowed})</option>)}
         </select>
       </Field>
-      <Field label={`จำนวน (สูงสุด ${max})`}>
-        <input type="number" min={1} max={max} value={qty} onChange={(e) => setQty(Math.min(max, Number(e.target.value)))} style={inputStyle} />
+      <Field label={`จำนวน * (สูงสุด ${max})`}>
+        <input type="number" min={1} max={max} value={qty} onChange={(e) => setQty(Math.max(1, Math.min(max, Number(e.target.value) || 1)))} style={inputStyle} />
       </Field>
-      <Field label="ใช้ที่ไหน"><input value={where} onChange={(e) => setWhere(e.target.value)} style={inputStyle} /></Field>
-      <Field label="ใช้ทำอะไร"><input value={purpose} onChange={(e) => setPurpose(e.target.value)} style={inputStyle} /></Field>
-      <Field label="กำหนดคืน"><input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={inputStyle} /></Field>
+      <Field label="สถานที่ใช้งาน *">
+        <select value={where} onChange={(e) => setWhere(e.target.value)} style={inputStyle}>
+          {LOCATIONS.map((l) => <option key={l.code} value={l.name}>{l.name}</option>)}
+          <option value={OTHER}>อื่นๆ (ระบุ)</option>
+        </select>
+        {where === OTHER && <input value={whereOther} onChange={(e) => setWhereOther(e.target.value)} placeholder="ระบุสถานที่" style={{ ...inputStyle, marginTop: 6 }} />}
+      </Field>
+      <Field label="วัตถุประสงค์ *">
+        <select value={purpose} onChange={(e) => setPurpose(e.target.value)} style={inputStyle}>
+          {BORROW_PURPOSES.map((x) => <option key={x}>{x}</option>)}
+        </select>
+      </Field>
+      <Field label={needsDetail ? "รายละเอียด *" : "รายละเอียด (ถ้ามี)"}>
+        <input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder={detailHint} style={inputStyle} />
+      </Field>
+      <Field label="กำหนดคืน *"><input type="date" min={todayISO()} value={due} onChange={(e) => setDue(e.target.value)} style={inputStyle} /></Field>
+      <div className="text-[11px] mb-2" style={{ color: C.mute }}>บันทึกเป็น: {purposeText} · {place || "-"}</div>
       <div className="flex justify-end mt-2">
-        <Btn onClick={() => onSubmit({ itemId, qty, where, purpose, due })} disabled={!chosen || !where}>ยืนยันการยืม</Btn>
+        <Btn onClick={() => onSubmit({ itemId, qty, where: place, purpose: purposeText, due })} disabled={!valid}>ยืนยันการยืม</Btn>
       </div>
     </div>
   );
@@ -2648,74 +2675,253 @@ function DamageForm({ items, onSubmit }) {
 /* ============================================================
    ANALYTICS
    ============================================================ */
-function Analytics({ items }) {
-  const health = useMemo(() => {
-    const ok = items.reduce((s, i) => s + i.normal, 0);
-    const dmg = items.reduce((s, i) => s + i.damaged, 0);
-    const lost = items.reduce((s, i) => s + i.lost, 0);
-    return [
-      { name: "ใช้งานได้", value: ok, fill: C.ok },
-      { name: "ชำรุด", value: dmg, fill: C.crimson },
-      { name: "สูญหาย", value: lost, fill: C.warn },
-    ];
-  }, [items]);
+/* ============================================================
+   ANALYTICS (L3/L4) — วิเคราะห์ข้อมูลทั้งศูนย์จากทุกชีต:
+   ครุภัณฑ์ · บุคลากร/ภาระงาน · ตารางสอน · งาน · ยืม-คืน/ชำรุด/ซ่อม ·
+   งบประมาณ · คุณภาพข้อมูล  → สรุปเป็น "สิ่งที่ต้องจัดการ" ให้หัวหน้าตัดสินใจได้ทันที
+   ============================================================ */
+const baht = (n) => `${Math.round(n || 0).toLocaleString("th-TH")} ฿`;
+function AnaCard({ title, children, right, span2 }) {
+  return (
+    <div className={`p-4 ${span2 ? "col-span-2" : ""}`} style={{ background: C.white, border: `1px solid ${C.line}` }}>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold" style={{ color: C.navy }}>{title}</h3>
+        {right}
+      </div>
+      {children}
+    </div>
+  );
+}
+function MiniBar({ label, value, max, color = C.navy, suffix = "" }) {
+  const pct = max ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  return (
+    <div className="mb-2">
+      <div className="flex justify-between text-xs mb-0.5"><span className="truncate pr-2" style={{ color: C.ink }}>{label}</span><span className="font-mono shrink-0" style={{ color: C.slate }}>{value.toLocaleString("th-TH")}{suffix}</span></div>
+      <div style={{ height: 6, background: C.paper }}><div style={{ width: `${pct}%`, height: 6, background: color }} /></div>
+    </div>
+  );
+}
 
-  const byCat = useMemo(() => {
-    const m = {};
+function Analytics({ user, items, borrows = [], damages = [], tasks = [], staffList = [], schedule = [], combinedSport = [], repairs = [], pmSchedule = [], docs = [], setTab }) {
+  const [budget, setBudget] = useState({ budgets: [], expenses: [], income: [], loaded: false });
+  useEffect(() => {
+    if (!API_URL || !user) return;
+    loadBudgetData(user.id).then((d) => setBudget({ ...d, loaded: true })).catch(() => setBudget((b) => ({ ...b, loaded: true })));
+  }, [user?.id]);
+
+  const A = useMemo(() => {
+    // ---------- ครุภัณฑ์ ----------
+    const units = { ok: 0, damaged: 0, lost: 0, disposed: 0, borrowed: 0 };
+    let value = 0, damagedValue = 0;
+    const byCat = {}, byLoc = {}, byOwner = {};
     items.forEach((i) => {
-      m[i.catCode] = m[i.catCode] || { cat: catName(i.catCode), ok: 0, damaged: 0, total: 0 };
-      m[i.catCode].ok += i.normal; m[i.catCode].damaged += i.damaged; m[i.catCode].total += i.normal + i.damaged;
+      units.ok += i.normal; units.damaged += i.damaged; units.lost += i.lost; units.disposed += i.disposed; units.borrowed += i.borrowed;
+      value += (i.normal + i.damaged) * (i.price || 0); damagedValue += i.damaged * (i.price || 0);
+      const c = (byCat[i.catCode] = byCat[i.catCode] || { name: catName(i.catCode), items: 0, ok: 0, damaged: 0, value: 0 });
+      c.items += 1; c.ok += i.normal; c.damaged += i.damaged; c.value += (i.normal + i.damaged) * (i.price || 0);
+      const l = (byLoc[i.loc || "ไม่ระบุ"] = byLoc[i.loc || "ไม่ระบุ"] || { name: i.loc || "ไม่ระบุ", items: 0, damaged: 0 });
+      l.items += 1; l.damaged += i.damaged;
+      const o = i.owner && i.owner !== "ยังไม่ระบุ" ? i.owner : "ยังไม่ระบุผู้ดูแล";
+      byOwner[o] = (byOwner[o] || 0) + 1;
     });
-    return Object.values(m).map((c) => ({ ...c, rate: c.total ? Math.round((c.damaged / c.total) * 100) : 0 })).sort((a, b) => b.rate - a.rate);
-  }, [items]);
+    const totalUnits = units.ok + units.damaged + units.lost;
+    const cats = Object.values(byCat).map((c) => ({ ...c, rate: c.ok + c.damaged ? Math.round((c.damaged / (c.ok + c.damaged)) * 100) : 0 }));
+    const outOfStock = items.filter((i) => i.normal - i.borrowed <= 0);
+    const lowStock = items.filter((i) => i.minAlert && i.normal - i.borrowed > 0 && i.normal - i.borrowed <= i.minAlert);
+    const riskItems = items.filter((i) => i.damaged > 0 && i.damaged >= i.normal).sort((a, b) => b.damaged - a.damaged);
 
-  const riskItems = items.filter((i) => i.damaged > 0 && i.damaged >= i.normal).slice(0, 8);
+    // ---------- บุคลากร & ภาระงาน ----------
+    const byUnit = {}, byLevel = {};
+    staffList.forEach((s) => { byUnit[s.dept || "ไม่ระบุ"] = (byUnit[s.dept || "ไม่ระบุ"] || 0) + 1; byLevel[s.level || "L1"] = (byLevel[s.level || "L1"] || 0) + 1; });
+    const periodsBy = {};
+    schedule.filter((r) => r.period !== "AS" && !isRoomScheduleRow(r)).forEach((r) => {
+      const k = r.teacher || "-"; periodsBy[k] = (periodsBy[k] || 0) + 1;
+    });
+    const workload = Object.entries(periodsBy).map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n);
+    const sportPeriods = {};
+    combinedSport.forEach((r) => (r.sports || []).forEach((sp) => { sportPeriods[sp.name] = (sportPeriods[sp.name] || 0) + 1; }));
+    const classesPerWeek = combinedSport.reduce((s, r) => s + (r.classes || []).length, 0);
+
+    // ---------- งาน ----------
+    const tStatus = {}; tasks.forEach((t) => { tStatus[t.status] = (tStatus[t.status] || 0) + 1; });
+    const openTasks = tasks.filter((t) => t.status !== "COMPLETED" && t.status !== "CANCELLED");
+    const overdueTasks = openTasks.filter((t) => isTaskOverdue(t));
+    const unassigned = openTasks.filter((t) => !t.assignee);
+    const doneRate = tasks.length ? Math.round(((tStatus.COMPLETED || 0) / tasks.length) * 100) : 0;
+
+    // ---------- ยืม-คืน / ชำรุด / ซ่อม ----------
+    const today = new Date().toLocaleDateString("sv-SE");
+    const openBorrows = borrows.filter((b) => b.status !== "returned");
+    const overdueBorrows = openBorrows.filter((b) => b.due && b.due < today);
+    const openDamages = damages.filter((d) => !/เสร็จ|ซ่อมแล้ว|ปิด/.test(d.status || ""));
+    const repairCost = repairs.reduce((s, r) => s + (r.cost || 0), 0);
+
+    // ---------- คุณภาพข้อมูล ----------
+    const n = items.length || 1;
+    const quality = [
+      { label: "มีราคาต่อหน่วย", have: items.filter((i) => i.price > 0).length, fix: "ใส่ราคาเพื่อคำนวณมูลค่าและค่าเสื่อม" },
+      { label: "ระบุผู้ดูแล", have: items.filter((i) => i.owner && i.owner !== "ยังไม่ระบุ").length, fix: "กำหนดผู้รับผิดชอบทุกรายการ" },
+      { label: "มีรูปภาพ", have: items.filter((i) => i.imageUrl).length, fix: "ถ่ายรูปช่วยตรวจนับ/ยืมได้ง่าย" },
+    ].map((q) => ({ ...q, pct: Math.round((q.have / n) * 100) }));
+
+    return { units, totalUnits, value, damagedValue, cats, byLoc: Object.values(byLoc).sort((a, b) => b.items - a.items), byOwner, outOfStock, lowStock, riskItems,
+      byUnit, byLevel, workload, sportPeriods, classesPerWeek, tStatus, openTasks, overdueTasks, unassigned, doneRate,
+      openBorrows, overdueBorrows, openDamages, repairCost, quality };
+  }, [items, borrows, damages, tasks, staffList, schedule, combinedSport, repairs]);
+
+  // ---------- งบประมาณ ----------
+  const budgetRows = useMemo(() => budget.budgets.map((b) => {
+    const ex = budget.expenses.filter((e) => e.budgetId === b.id);
+    const approved = ex.filter((e) => /อนุมัติแล้ว|approved/i.test(e.approvalStatus)).reduce((s, e) => s + e.amount, 0);
+    const pending = ex.filter((e) => /รอ/.test(e.approvalStatus)).reduce((s, e) => s + e.amount, 0);
+    return { ...b, approved, pending, used: approved + pending, pct: b.amount ? Math.round(((approved + pending) / b.amount) * 100) : 0, n: ex.length };
+  }), [budget]);
+  const pendingExpenses = budget.expenses.filter((e) => /รอ/.test(e.approvalStatus));
+
+  // ---------- สิ่งที่ต้องจัดการ (เรียงตามความสำคัญ) ----------
+  const actions = [];
+  budgetRows.filter((b) => b.pct > 100).forEach((b) => actions.push({ tone: "bad", text: `โครงการ "${b.name.trim()}" ใช้งบเกิน ${b.pct - 100}% (${baht(b.used)} / ${baht(b.amount)})`, tab: "budget" }));
+  if (pendingExpenses.length) actions.push({ tone: "warn", text: `รายจ่ายรออนุมัติ ${pendingExpenses.length} รายการ รวม ${baht(pendingExpenses.reduce((s, e) => s + e.amount, 0))}`, tab: "budget" });
+  if (A.overdueBorrows.length) actions.push({ tone: "bad", text: `อุปกรณ์ยืมเกินกำหนดคืน ${A.overdueBorrows.length} รายการ`, tab: "borrow" });
+  if (A.overdueTasks.length) actions.push({ tone: "bad", text: `งานเกินกำหนด ${A.overdueTasks.length} งาน`, tab: "tasks" });
+  if (A.unassigned.length) actions.push({ tone: "warn", text: `งานยังไม่มอบหมายผู้รับผิดชอบ ${A.unassigned.length} งาน`, tab: "tasks" });
+  if (A.units.damaged) actions.push({ tone: "warn", text: `อุปกรณ์ชำรุด ${A.units.damaged.toLocaleString()} ชิ้น ใน ${items.filter((i) => i.damaged).length} รายการ — ควรส่งซ่อมหรือจำหน่ายออก`, tab: "damage" });
+  if (A.outOfStock.length) actions.push({ tone: "warn", text: `รายการที่ไม่มีของพร้อมใช้ ${A.outOfStock.length} รายการ`, tab: "inventory" });
+  if (A.lowStock.length) actions.push({ tone: "warn", text: `ใกล้หมด (ต่ำกว่าจุดเตือน) ${A.lowStock.length} รายการ`, tab: "inventory" });
+  if (!pmSchedule.length) actions.push({ tone: "info", text: "ยังไม่มีแผนซ่อมบำรุงล่วงหน้า (PM) — ควรตั้งรอบตรวจสนาม/สระ/ฟิตเนส", tab: "maintenance" });
+  A.quality.filter((q) => q.pct < 50).forEach((q) => actions.push({ tone: "info", text: `ข้อมูลครุภัณฑ์${q.label}เพียง ${q.pct}% — ${q.fix}`, tab: "inventory" }));
+  const toneStyle = { bad: { bg: C.badBg, fg: C.bad }, warn: { bg: C.warnBg, fg: C.warn }, info: { bg: "#EAF2FB", fg: "#1B5E8A" } };
+
+  const health = [
+    { name: "ใช้งานได้", value: A.units.ok, fill: C.ok },
+    { name: "ชำรุด", value: A.units.damaged, fill: C.crimson },
+    { name: "สูญหาย", value: A.units.lost, fill: C.warn },
+  ];
+  const readyPct = A.totalUnits ? Math.round((A.units.ok / A.totalUnits) * 100) : 0;
+  const maxWork = A.workload[0]?.n || 1;
+  const sportList = Object.entries(A.sportPeriods).sort((a, b) => b[1] - a[1]);
 
   return (
     <div>
-      <SectionHead eyebrow="ANALYTICS" title="วิเคราะห์ทรัพยากร" sub="Resource Health · Damage Rate · High-risk Resources" />
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-          <h3 className="text-sm font-bold mb-2" style={{ color: C.navy }}>สุขภาพทรัพยากรรวม</h3>
-          <ResponsiveContainer width="100%" height={200}>
+      <SectionHead eyebrow="ANALYTICS" title="วิเคราะห์ข้อมูลศูนย์กีฬา" sub="สรุปจากทุกชีต: ครุภัณฑ์ · บุคลากร · ตารางสอน · งาน · ยืม-คืน · ซ่อม · งบประมาณ" />
+
+      <div className="grid grid-cols-2 gap-3 mb-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+        <StatCard label="มูลค่าครุภัณฑ์ (ที่มีราคา)" value={baht(A.value)} sub={`${items.length} รายการ · ${A.totalUnits.toLocaleString()} ชิ้น`} icon={Package} />
+        <StatCard label="พร้อมใช้งาน" value={`${readyPct}%`} sub={`ชำรุด ${A.units.damaged} · สูญหาย ${A.units.lost}`} tone={readyPct >= 90 ? "navy" : "crimson"} icon={ShieldCheck} />
+        <StatCard label="บุคลากรในระบบ" value={staffList.length} sub={Object.entries(A.byLevel).sort().map(([k, v]) => `${k}:${v}`).join(" · ")} icon={Users} />
+        <StatCard label="คาบกีฬา/สัปดาห์" value={combinedSport.length} sub={`${A.classesPerWeek} ห้องเรียน-คาบ · ${sportList.length} กีฬา`} icon={Trophy} />
+        <StatCard label="งานค้าง" value={A.openTasks.length} sub={`เกินกำหนด ${A.overdueTasks.length} · สำเร็จ ${A.doneRate}%`} tone={A.overdueTasks.length ? "crimson" : "navy"} icon={ClipboardList} />
+        <StatCard label="งบประมาณที่ใช้" value={budgetRows.length ? `${Math.round(budgetRows.reduce((s, b) => s + b.used, 0) / Math.max(1, budgetRows.reduce((s, b) => s + b.amount, 0)) * 100)}%` : "–"} sub={budgetRows.length ? `${baht(budgetRows.reduce((s, b) => s + b.used, 0))} / ${baht(budgetRows.reduce((s, b) => s + b.amount, 0))}` : budget.loaded ? "ไม่มีข้อมูล" : "กำลังโหลด…"} icon={DollarSign} />
+      </div>
+
+      <AnaCard title={`สิ่งที่ต้องจัดการ (${actions.length})`}>
+        {actions.length === 0 ? <div className="text-sm" style={{ color: C.ok }}>ไม่มีเรื่องค้าง 🎉</div> : (
+          <div className="space-y-1.5">
+            {actions.map((a, i) => (
+              <button key={i} onClick={() => setTab && setTab(a.tab)} className="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2"
+                style={{ background: toneStyle[a.tone].bg, color: toneStyle[a.tone].fg }}>
+                <span>{a.tone === "bad" ? "⛔" : a.tone === "warn" ? "⚠️" : "ℹ️"} {a.text}</span><ChevronRight size={14} className="shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+      </AnaCard>
+
+      <div className="grid grid-cols-2 gap-4 mt-4 mb-4">
+        <AnaCard title="สุขภาพครุภัณฑ์ (ชิ้น)">
+          <ResponsiveContainer width="100%" height={190}>
             <PieChart>
-              <Pie data={health} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={2}>
+              <Pie data={health} dataKey="value" nameKey="name" innerRadius={45} outerRadius={72} paddingAngle={2}>
                 {health.map((h, i) => <Cell key={i} fill={h.fill} />)}
               </Pie>
               <Tooltip contentStyle={{ fontFamily: FONT, fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 11, fontFamily: FONT }} />
             </PieChart>
           </ResponsiveContainer>
-        </div>
-        <div className="col-span-2 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-          <h3 className="text-sm font-bold mb-2" style={{ color: C.navy }}>อัตราชำรุดแยกตามหมวด (%)</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={byCat} layout="vertical" margin={{ left: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.line} horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} unit="%" />
-              <YAxis type="category" dataKey="cat" width={110} tick={{ fontSize: 11, fontFamily: FONT }} />
-              <Tooltip contentStyle={{ fontFamily: FONT, fontSize: 12 }} />
-              <Bar dataKey="rate" name="อัตราชำรุด %" fill={C.crimson} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+          <div className="text-xs text-center" style={{ color: C.mute }}>มูลค่าของชำรุด {baht(A.damagedValue)} · จำหน่ายออกแล้ว {A.units.disposed} ชิ้น</div>
+        </AnaCard>
+        <AnaCard title="อัตราชำรุดแยกตามหมวด (%)">
+          {A.cats.filter((c) => c.damaged).sort((a, b) => b.rate - a.rate).slice(0, 8).map((c) => (
+            <MiniBar key={c.name} label={`${c.name} (${c.damaged}/${c.ok + c.damaged})`} value={c.rate} max={100} color={c.rate >= 30 ? C.crimson : C.warn} suffix="%" />
+          ))}
+          {!A.cats.some((c) => c.damaged) && <div className="text-sm" style={{ color: C.mute }}>ไม่มีของชำรุด</div>}
+        </AnaCard>
+        <AnaCard title="จำนวนรายการตามสถานที่เก็บ">
+          {A.byLoc.slice(0, 8).map((l) => <MiniBar key={l.name} label={l.name} value={l.items} max={A.byLoc[0]?.items} />)}
+        </AnaCard>
+        <AnaCard title="ภาระดูแลครุภัณฑ์ตามผู้ดูแล">
+          {Object.entries(A.byOwner).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+            <MiniBar key={k} label={k} value={v} max={items.length} color={k === "ยังไม่ระบุผู้ดูแล" ? C.warn : C.navy} suffix=" รายการ" />
+          ))}
+        </AnaCard>
       </div>
 
-      <div className="p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
-        <h3 className="text-sm font-bold mb-3" style={{ color: C.navy }}>รายการความเสี่ยงสูง (ชำรุด ≥ พร้อมใช้)</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {riskItems.length === 0 && <div className="text-sm" style={{ color: C.mute }}>ไม่มีรายการความเสี่ยงสูงในขณะนี้</div>}
-          {riskItems.map((it) => (
-            <div key={it.id} className="flex items-center justify-between px-3 py-2" style={{ background: C.badBg }}>
-              <div>
-                <div className="text-sm font-medium" style={{ color: C.ink }}>{it.name}</div>
-                <div className="text-xs" style={{ color: C.mute }}>{it.code} · {catName(it.catCode)}</div>
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <AnaCard title="คาบสอนต่อสัปดาห์รายบุคคล" right={<span className="text-[11px]" style={{ color: C.mute }}>จากตารางสอน</span>}>
+          {A.workload.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ยังไม่มีข้อมูลตารางสอน</div> :
+            A.workload.slice(0, 12).map((w) => <MiniBar key={w.name} label={w.name} value={w.n} max={maxWork} color={w.n >= 30 ? C.crimson : C.navy} suffix=" คาบ" />)}
+          {A.workload.length > 0 && <div className="text-[11px] mt-2" style={{ color: C.mute }}>สีแดง = ≥ 30 คาบ/สัปดาห์ ควรพิจารณากระจายภาระงาน</div>}
+        </AnaCard>
+        <AnaCard title="กีฬาที่สอน (คาบ/สัปดาห์)" right={<span className="text-[11px]" style={{ color: C.mute }}>จากตารางรวมกีฬา</span>}>
+          {sportList.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ยังไม่มีข้อมูล</div> :
+            sportList.map(([k, v]) => <MiniBar key={k} label={k} value={v} max={sportList[0][1]} color={C.crimson} suffix=" คาบ" />)}
+        </AnaCard>
+        <AnaCard title="บุคลากรตามหน่วยงาน">
+          {Object.entries(A.byUnit).sort((a, b) => b[1] - a[1]).map(([k, v]) => <MiniBar key={k} label={k} value={v} max={staffList.length} suffix=" คน" />)}
+        </AnaCard>
+        <AnaCard title="งานและกิจกรรมยืม-คืน-ซ่อม">
+          <div className="grid grid-cols-2 gap-2 text-center">
+            {[
+              ["งานทั้งหมด", tasks.length], ["ยังไม่มอบหมาย", A.unassigned.length],
+              ["ยืมอยู่", A.openBorrows.length], ["ยืมเกินกำหนด", A.overdueBorrows.length],
+              ["แจ้งชำรุดค้าง", A.openDamages.length], ["ค่าซ่อมรวม", baht(A.repairCost)],
+            ].map(([k, v]) => (
+              <div key={k} className="p-2" style={{ background: C.paper }}>
+                <div className="text-base font-bold" style={{ color: C.ink }}>{v}</div>
+                <div className="text-[11px]" style={{ color: C.mute }}>{k}</div>
               </div>
-              <Pill fg={C.crimson} bg={C.white}>ชำรุด {it.damaged}/{it.normal + it.damaged}</Pill>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </AnaCard>
       </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <AnaCard title="งบประมาณ: ได้รับ vs ใช้ไป" span2>
+          {!budget.loaded ? <div className="text-sm" style={{ color: C.mute }}>กำลังโหลด…</div> : budgetRows.length === 0 ? <div className="text-sm" style={{ color: C.mute }}>ไม่มีข้อมูลงบประมาณ</div> : (
+            <div className="space-y-3">
+              {budgetRows.map((b) => (
+                <div key={b.id}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="font-semibold" style={{ color: C.ink }}>{b.name}</span>
+                    <span style={{ color: b.pct > 100 ? C.bad : C.slate }}>{baht(b.used)} / {baht(b.amount)} ({b.pct}%)</span>
+                  </div>
+                  <div className="flex" style={{ height: 8, background: C.paper }}>
+                    <div style={{ width: `${Math.min(100, (b.approved / (b.amount || 1)) * 100)}%`, background: C.ok }} />
+                    <div style={{ width: `${Math.min(100, (b.pending / (b.amount || 1)) * 100)}%`, background: b.pct > 100 ? C.bad : C.warn }} />
+                  </div>
+                  <div className="text-[11px] mt-0.5" style={{ color: C.mute }}>อนุมัติแล้ว {baht(b.approved)} · รออนุมัติ {baht(b.pending)} · {b.n} รายการ</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </AnaCard>
+        <AnaCard title="ความครบถ้วนของข้อมูลครุภัณฑ์" span2>
+          {A.quality.map((q) => <MiniBar key={q.label} label={`${q.label} (${q.have}/${items.length})`} value={q.pct} max={100} color={q.pct >= 80 ? C.ok : q.pct >= 50 ? C.warn : C.bad} suffix="%" />)}
+        </AnaCard>
+      </div>
+
+      {A.riskItems.length > 0 && (
+        <AnaCard title={`รายการความเสี่ยงสูง (ชำรุด ≥ ใช้งานได้) — ${A.riskItems.length} รายการ`}>
+          <div className="grid grid-cols-2 gap-2">
+            {A.riskItems.slice(0, 10).map((it) => (
+              <div key={it.id} className="flex items-center justify-between px-3 py-2" style={{ background: C.badBg }}>
+                <div className="min-w-0"><div className="text-sm font-medium truncate" style={{ color: C.ink }}>{it.name}</div><div className="text-xs" style={{ color: C.mute }}>{it.code} · {it.loc}</div></div>
+                <Pill fg={C.crimson} bg={C.white}>ชำรุด {it.damaged}/{it.normal + it.damaged}</Pill>
+              </div>
+            ))}
+          </div>
+        </AnaCard>
+      )}
     </div>
   );
 }
