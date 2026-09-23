@@ -10,6 +10,7 @@ import {
   Building2, Shirt, Trophy, Download, Bell, ChevronDown, User, Users,
   ClipboardList, MessageSquare, UserCheck, Play, CalendarDays, ListChecks,
   BookOpen, DollarSign, Upload, ExternalLink, CalendarClock, Lock, Menu, KeyRound, Languages, RefreshCw, Copy, EyeOff,
+  Dumbbell, Waves, Target, Music, Sword, Mountain, Flag, Circle, Landmark,
 } from "lucide-react";
 import { Calendar as BigCalendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -1858,30 +1859,21 @@ function toMinutes_(hhmm) {
   return h * 60 + m;
 }
 
-// ไอคอน emoji ต่อสถานที่ — จับคู่จากคำในชื่อห้อง เช่น "สนามฟุตบอล" → ⚽
-function facilityIcon(name) {
+// ไอคอนสถานที่ (สไตล์มินิมอลจาก lucide) — จับคู่จากคำในชื่อห้อง
+function pickFacilityIcon(name) {
   const n = String(name || "");
-  if (/เทควันโด/.test(n)) return "🥋";
-  if (/มวย/.test(n)) return "🥊";
-  if (/ปีนหน้าผา|ปีนผา/.test(n)) return "🧗";
-  if (/เทเบิลเทนนิส|ปิงปอง/.test(n)) return "🏓";
-  if (/แบดมินตัน/.test(n)) return "🏸";
-  if (/เทนนิส/.test(n)) return "🎾";
-  if (/ฟุตซอล/.test(n)) return "⚽";
-  if (/ฟุตบอล/.test(n)) return "⚽";
-  if (/บาสเกตบอล|บาส/.test(n)) return "🏀";
-  if (/วอลเลย์บอล|วอลเล/.test(n)) return "🏐";
-  if (/กอล์ฟ/.test(n)) return "⛳";
-  if (/เต้น|แดนซ์|บัลเล่ต์/.test(n)) return "🩰";
-  if (/สระ|ว่ายน้ำ/.test(n)) return "🏊";
-  if (/ฟิตเนส|ยิม/.test(n)) return "💪";
-  if (/ยิมนาสติก/.test(n)) return "🤸";
-  if (/อารีน่า|arena/i.test(n)) return "🏟️";
-  if (/สำนักงาน|ธุรการ/.test(n)) return "🏢";
-  if (/กิจกรรม/.test(n)) return "🎉";
-  if (/เก็บของ|สโตร์|store/i.test(n)) return "📦";
-  if (/ห้องเรียน/.test(n)) return "🏫";
-  return "🏛️";
+  if (/เทควันโด|มวย|ศิลปะการต่อสู้/.test(n)) return Sword;
+  if (/ปีนหน้าผา|ปีนผา/.test(n)) return Mountain;
+  if (/เทเบิลเทนนิส|ปิงปอง|เทนนิส|แบดมินตัน/.test(n)) return Target;
+  if (/ฟุตซอล|ฟุตบอล|บาสเกตบอล|บาส|วอลเลย์|วอลเล/.test(n)) return Circle;
+  if (/กอล์ฟ/.test(n)) return Flag;
+  if (/เต้น|แดนซ์|บัลเล่ต์/.test(n)) return Music;
+  if (/สระ|ว่ายน้ำ/.test(n)) return Waves;
+  if (/ฟิตเนส|ยิม|ยิมนาสติก/.test(n)) return Dumbbell;
+  if (/อารีน่า|arena/i.test(n)) return Trophy;
+  if (/สำนักงาน|ธุรการ|กิจกรรม/.test(n)) return Building2;
+  if (/เก็บของ|สโตร์|store/i.test(n)) return Package;
+  return Landmark;
 }
 
 function Facility({ items, schedule = [], pmSchedule = [], setTab }) {
@@ -1943,7 +1935,7 @@ function Facility({ items, schedule = [], pmSchedule = [], setTab }) {
             <div key={l.name} className="p-4" style={{ background: C.white, border: `1px solid ${C.line}`, borderLeft: `3px solid ${inUse ? C.gold : (l.damaged > l.ok * 0.3 && l.ok > 0 ? C.crimson : C.ok)}` }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span aria-hidden className="shrink-0 text-lg leading-none" style={{ width: 22, textAlign: "center" }}>{facilityIcon(l.name)}</span>
+                  {(() => { const Ico = pickFacilityIcon(l.name); return <Ico size={16} strokeWidth={1.5} className="shrink-0" style={{ color: C.navy }} />; })()}
                   <span className="font-bold text-sm truncate" style={{ color: C.ink }}>{l.name}</span>
                 </div>
                 {inUse ? (
