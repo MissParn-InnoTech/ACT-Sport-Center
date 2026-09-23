@@ -62,7 +62,10 @@ const FONT = "'Noto Sans Thai','Sarabun',ui-sans-serif,system-ui,-apple-system,s
    มาใส่ค่าด้านล่างนี้ — ถ้าเว้นว่างไว้ ระบบจะทำงานด้วยข้อมูลตัวอย่าง
    ในเครื่อง (seed data) เหมือนเดิม ไม่กระทบการใช้งาน
    ============================================================ */
+// Web App ระบบครุภัณฑ์ (Code.gs)
 const API_URL = "https://script.google.com/macros/s/AKfycbzjryObqjBJReU4wVUJ3WLUnzJEYWYyp2bUWTFxV86EtGNTihJO98yBy0TdUZ_ydI2JmQ/exec";
+// Web App ตารางสอนรายครู (TeachingSchedule.gs) — deploy แยกเป็นอีกโปรเจกต์
+const TEACHING_API_URL = "https://script.google.com/macros/s/AKfycbym8sgvcirl5YoNYHp4P6nmGQSyCh7Hcx4Ap6a-bZCgbou34uiUklwpdrAEsXFpVmU/exec";
 
 // ตัดคำนำหน้าชื่อ (นาย/นาง/น.ส./นางสาว/มิส/ม./ครู/คุณครู) และช่องว่างออก เพื่อเทียบ
 // ชื่อครูข้ามแหล่งข้อมูลที่สะกดคำนำหน้าไม่ตรงกัน (ชีตบุคลากร vs ชีตตารางสอน)
@@ -173,7 +176,7 @@ function isValidSheetValue(v) {
    จึงเป็นแบบดูอย่างเดียว (แก้ที่ชีต "ตารางรวมทุกคน")
    ============================================================ */
 async function loadTeachingSchedule() {
-  const data = await sheetsFetch(`${API_URL}?action=teachingSchedule`);
+  const data = await sheetsFetch(`${TEACHING_API_URL}?action=teachingSchedule`);
   if (!data || !Array.isArray(data.slots)) throw new Error(data?.error || "teachingSchedule not available");
   const rows = data.slots
     .filter((s) => s.start && s.end && s.day)
