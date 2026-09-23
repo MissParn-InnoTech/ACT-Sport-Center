@@ -1072,23 +1072,23 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ fontFamily: FONT, background: "#0A0A0A" }}>
       {/* top navbar — full-width on desktop; stays sensible when squeezed to mobile width */}
-      <header className="relative shrink-0 flex items-center justify-between px-5 lg:px-10 py-3 lg:py-4"
+      <header className="relative shrink-0 flex items-center justify-between px-5 xl:px-10 py-3 xl:py-4"
         style={{ background: "linear-gradient(90deg,#2a2a2c,#3a3a3c 40%,#4a4a4c)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         <div className="flex items-center gap-3 min-w-0">
-          <img src={LOGO_URL} alt="ACT 1961 Sport Center" className="h-10 lg:h-14 w-auto shrink-0" style={{ objectFit: "contain" }} />
+          <img src={LOGO_URL} alt="ACT 1961 Sport Center" className="h-10 xl:h-14 w-auto shrink-0" style={{ objectFit: "contain" }} />
         </div>
-        <nav className="hidden lg:flex items-center gap-8 ml-auto">
+        <nav className="hidden xl:flex items-center gap-8 ml-auto">
           <LangToggle />
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
           <a className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
           <span className="px-5 py-2 text-sm font-semibold" style={{ background: C.crimson, color: C.white }}>Contact</span>
         </nav>
-        <LangToggle className="lg:hidden ml-auto mr-1" />
-        <button onClick={() => setNavOpen((v) => !v)} className="lg:hidden w-11 h-11 flex items-center justify-center shrink-0" aria-label="เมนู">
+        <LangToggle className="xl:hidden ml-auto mr-1" />
+        <button onClick={() => setNavOpen((v) => !v)} className="xl:hidden w-11 h-11 flex items-center justify-center shrink-0" aria-label="เมนู">
           <Menu size={22} color="rgba(255,255,255,0.85)" />
         </button>
         {navOpen && (
-          <div className="lg:hidden absolute top-full left-0 right-0 z-20 flex flex-col" style={{ background: "#2a2a2c", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+          <div className="xl:hidden absolute top-full left-0 right-0 z-20 flex flex-col" style={{ background: "#2a2a2c", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
             <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>Home</a>
             <a className="px-5 py-3 text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>About</a>
             <span className="mx-5 my-2 px-5 py-2 text-sm font-semibold text-center" style={{ background: C.crimson, color: C.white }}>Contact</span>
@@ -1097,7 +1097,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
       </header>
 
       {/* hero — mascot left, login card right on desktop; stacked on mobile */}
-      <div className="flex-1 relative flex flex-col lg:flex-row overflow-y-auto overflow-x-hidden" style={{
+      <div className="flex-1 relative flex flex-col xl:flex-row overflow-y-auto overflow-x-hidden" style={{
         background: "linear-gradient(135deg,#3a3a3c 0%,#232325 30%,#1a1a1c 60%,#0e0e10 100%)",
       }}>
         <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
@@ -1108,7 +1108,7 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         }} />
 
         {/* mobile: full-bleed background photo with a black→red filter overlay, per the reference */}
-        <div className="lg:hidden absolute inset-0 z-0" style={{
+        <div className="xl:hidden absolute inset-0 z-0" style={{
           backgroundImage: `linear-gradient(180deg, rgba(10,4,4,0.15) 0%, rgba(130,15,25,0.15) 45%, rgba(8,3,3,0.75) 100%), url("${MOBILE_BG_URL}")`,
           backgroundSize: "cover",
           backgroundPosition: "center top",
@@ -1116,18 +1116,18 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
         }} />
 
         {/* mascot illustration — desktop only; mobile uses the full-bleed background above instead */}
-        <div className="hidden lg:flex relative shrink-0 overflow-hidden lg:w-[48%] lg:h-full">
+        <div className="hidden xl:flex relative shrink-0 overflow-hidden xl:w-[620px] xl:h-full">
           <img src={MASCOT_URL} alt="ACT Sport Center mascots" className="w-full h-full object-contain object-left-top" style={{ transform: "scale(0.81)", transformOrigin: "top left" }} />
         </div>
 
         {/* login column */}
-        <div className="relative z-10 flex-1 flex flex-col px-5 sm:px-6 lg:px-14 py-5 lg:pt-16 lg:pb-10">
-          <h1 className="text-4xl lg:text-6xl tracking-tight lg:whitespace-nowrap mb-6 lg:mb-10 shrink-0 text-center lg:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)", fontFamily: "'Anton', sans-serif" }}>
+        <div className="relative z-10 flex-1 flex flex-col px-5 sm:px-6 xl:px-14 py-5 xl:pt-16 xl:pb-10">
+          <h1 className="text-4xl xl:text-6xl tracking-tight xl:whitespace-nowrap mb-6 xl:mb-10 shrink-0 text-center xl:text-left" style={{ color: C.crimson, textShadow: "0 4px 0 rgba(0,0,0,0.4)", fontFamily: "'Anton', sans-serif" }}>
             <span style={{ color: C.white }}>ACT</span> SPORT CENTER
           </h1>
-          <div className="flex-1 flex items-start lg:items-center justify-center lg:justify-start">
+          <div className="flex-1 flex items-start xl:items-center justify-center xl:justify-start">
           <div className="w-full max-w-md">
-            <div className="flex items-center gap-3 mb-5 justify-center text-center lg:justify-start lg:text-left">
+            <div className="flex items-center gap-3 mb-5 justify-center text-center xl:justify-start xl:text-left">
               <Users size={28} strokeWidth={1.4} style={{ color: "rgba(255,255,255,0.7)" }} />
               <div>
                 <div className="text-lg font-semibold" style={{ color: C.white }}>ACT SportHub</div>
@@ -1173,9 +1173,9 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
 
               {err && <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#FF9EAE" }}><AlertTriangle size={13} />{err}</div>}
 
-              <div className="mt-2 lg:mt-5 lg:flex lg:justify-end">
+              <div className="mt-2 xl:mt-5 xl:flex xl:justify-end">
                 <button onClick={submit}
-                  className="w-full lg:w-auto px-8 py-3 lg:py-2.5 text-sm font-bold transition-all duration-200 active:scale-95 hover:brightness-110 hover:shadow-[0_0_28px_rgba(232,100,26,0.75)]"
+                  className="w-full xl:w-auto px-8 py-3 xl:py-2.5 text-sm font-bold transition-all duration-200 active:scale-95 hover:brightness-110 hover:shadow-[0_0_28px_rgba(232,100,26,0.75)]"
                   style={{
                     minHeight: 48,
                     background: "linear-gradient(135deg,#FF8A3D,#E8641A)",
