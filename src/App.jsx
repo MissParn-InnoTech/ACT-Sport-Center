@@ -2067,13 +2067,6 @@ function ScheduleView({ user, schedule, setSchedule, staffList, tasks = [], logA
           </div>
         } />
 
-      {manager && warnings.length > 0 && (
-        <div className="p-3 mb-4 text-xs" style={{ background: C.warnBg, color: C.warn, border: `1px solid ${C.line}` }}>
-          <div className="font-bold mb-1 flex items-center gap-1.5"><AlertTriangle size={13} /> ตรวจพบปัญหาในชีตตารางสอน</div>
-          <ul className="list-disc pl-5 space-y-0.5">{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
-        </div>
-      )}
-
       {rows.length === 0 ? (
         <div className="p-8 text-center text-sm mb-6" style={{ color: C.mute, border: `1px dashed ${C.line}`, background: C.white }}>
           {!loaded ? "กำลังโหลดตารางสอน…" : !mine ? "ไม่พบข้อมูลในชีต \"ตารางรวมกีฬา\"" : mine ? "ยังไม่มีตารางสอนของคุณในระบบ — รอผู้ดูแลนำเข้าข้อมูล หรือมอบหมายงานให้" : "ยังไม่มีข้อมูลตารางรวมกีฬาในระบบ"}
