@@ -579,65 +579,6 @@ const STAFF = [
   { id: "60009", name: "นายมานิตย์ บุบผาสุข", dept: "ศูนย์ฟิตเนส", role: "ครูสอนคลาส Power Fighting", phone: "090-9722716", level: "L1" },
 ];
 
-const DataSourceModal = ({ isOpen, onClose, sourceData }) => {
-  if (!isOpen || !sourceData) return null;
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose}>
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-900">{sourceData.label}</h2>
-        
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Current Value</h3>
-            <p className="text-3xl font-bold" style={{ color: sourceData.color }}>
-              {sourceData.value}
-            </p>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Data Source</h3>
-            <p className="text-sm text-gray-600">{sourceData.sheetName}</p>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Cell References</h3>
-            <p className="text-sm text-gray-600">{sourceData.cellRange}</p>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Calculation Method</h3>
-            <p className="text-sm text-gray-600">{sourceData.calculationMethod}</p>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Description</h3>
-            <p className="text-sm text-gray-600">{sourceData.description}</p>
-          </div>
-
-          {sourceData.relatedDataPages && sourceData.relatedDataPages.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Related Data</h3>
-              <ul className="text-sm text-gray-600 list-disc list-inside">
-                {sourceData.relatedDataPages.map((page, idx) => (
-                  <li key={idx}>{page}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={onClose}
-          className="w-full bg-blue-600 text-white rounded-lg py-2 font-semibold hover:bg-blue-700 transition"
-        >
-          Close
-        </button>
-      </div>
-    </Modal>
-  );
-};
-
 const ROLE_META = {
   L0: { label: "L0 · ครูนอกสังกัด", dash: "ยืม–คืนอุปกรณ์เท่านั้น", tint: C.crimson },
   L1: { label: "L1 · Teacher", dash: "MY WORKSPACE", tint: C.navySoft },
@@ -731,24 +672,25 @@ function SectionHead({ eyebrow, title, sub, right }) {
   );
 }
 
-const StatCard = ({ icon: Icon, label, value, color, onClick, showSource }) => {
+const STAT_CARD_TONES = { navy: C.navy, ok: C.ok, crimson: C.crimson, gold: C.warn };
+
+const StatCard = ({ icon: Icon, label, value, color, tone, sub, onClick }) => {
+  const accent = color || STAT_CARD_TONES[tone] || C.navy;
   return (
     <div 
       onClick={onClick}
       className={`bg-white rounded-lg shadow-sm p-6 border-l-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
-      style={{ borderColor: color }}
+      style={{ borderColor: accent }}
     >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Icon size={32} style={{ color }} />
+          <Icon size={32} style={{ color: accent }} />
           <div>
             <p className="text-sm text-gray-600">{label}</p>
             <p className="text-2xl font-bold text-gray-900">{value}</p>
+            {sub && <p className="text-xs mt-1 text-gray-500">{sub}</p>}
           </div>
         </div>
-        {showSource && onClick && (
-          <ExternalLink size={18} className="text-gray-400" />
-        )}
       </div>
     </div>
   );
@@ -1268,53 +1210,6 @@ function LoginScreen({ loginId, setLoginId, onLogin, err }) {
     </div>
   );
 }
-const Dashboard = () => {
-  const [activeTab, setActiveTab] = useState("overview");
-const [selectedSource, setSelectedSource] = useState(null);
-
-const dataSources = {
-  total: {
-    label: "Total Equipment",
-    value: totalEquipment,
-    color: C.primary,
-    sheetName: "Equipment Master Sheet",
-    cellRange: "A1:A1000",
-    calculationMethod: "COUNT of all equipment items",
-    description: "Total number of equipment pieces in the sports center inventory",
-    relatedDataPages: ["Equipment Catalog", "Equipment Status Report"]
-  },
-  normal: {
-    label: "Equipment in Normal Condition",
-    value: normalEquipment,
-    color: C.success,
-    sheetName: "Equipment Master Sheet",
-    cellRange: "Column: Status = 'Normal'",
-    calculationMethod: "COUNT where Status = 'Normal'",
-    description: "Equipment that is functioning properly and ready for use",
-    relatedDataPages: ["Condition Report", "Maintenance Schedule"]
-  },
-  damaged: {
-    label: "Damaged Equipment",
-    value: damagedEquipment,
-    color: C.danger,
-    sheetName: "Equipment Master Sheet",
-    cellRange: "Column: Status = 'Damaged'",
-    calculationMethod: "COUNT where Status = 'Damaged'",
-    description: "Equipment that requires repair or replacement",
-    relatedDataPages: ["Repair Queue", "Maintenance Log"]
-  },
-  activeBorrows: {
-    label: "Active Borrowings",
-    value: activeBorrowCount,
-    color: C.warning,
-    sheetName: "Borrow Records Sheet",
-    cellRange: "Column: Return_Date IS_EMPTY",
-    calculationMethod: "COUNT where Return_Date is empty",
-    description: "Equipment currently borrowed and not yet returned",
-    relatedDataPages: ["Borrow History", "Return Schedule"]
-  }
-};
-
 /* ============================================================
    SIDEBAR / TOPBAR
    ============================================================ */
@@ -1504,6 +1399,11 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
     });
     return Object.values(m).sort((a, b) => b.damaged - a.damaged).slice(0, 8);
   }, [items]);
+  const pieData = [
+    { name: "Normal", value: k.normal, fill: C.ok },
+    { name: "Damaged", value: k.damaged, fill: C.crimson },
+    { name: "Borrowed", value: k.activeBorrows, fill: C.warn },
+  ].filter((entry) => entry.value > 0);
 
   const topDamaged = useMemo(() => [...items].filter((i) => i.damaged > 0).sort((a, b) => b.damaged - a.damaged).slice(0, 6), [items]);
 
@@ -1530,40 +1430,6 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
     return (
       <div>
         <SectionHead eyebrow="MY WORKSPACE" title={`สวัสดี, ${user.name}`} sub="นี่คือสิ่งที่คุณต้องทำวันนี้" />
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <StatCard 
-  icon={Package} 
-  label="Total Equipment" 
-  value={totalEquipment} 
-  color={C.primary}
-  onClick={() => setSelectedSource(dataSources.total)}
-  showSource
-/>
-<StatCard 
-  icon={CheckCircle} 
-  label="Normal Condition" 
-  value={normalEquipment} 
-  color={C.success}
-  onClick={() => setSelectedSource(dataSources.normal)}
-  showSource
-/>
-<StatCard 
-  icon={AlertCircle} 
-  label="Damaged" 
-  value={damagedEquipment} 
-  color={C.danger}
-  onClick={() => setSelectedSource(dataSources.damaged)}
-  showSource
-/>
-<StatCard 
-  icon={Users} 
-  label="Active Borrowings" 
-  value={activeBorrowCount} 
-  color={C.warning}
-  onClick={() => setSelectedSource(dataSources.activeBorrows)}
-  showSource
-/></div>
-
         {todaysTasks.length > 0 && (
           <div className="mb-6 p-4" style={{ background: C.white, border: `1px solid ${C.line}` }}>
             <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: C.navy }}><ClipboardList size={15} /> งานของวันนี้</h3>
@@ -1622,21 +1488,11 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
           <div className="text-xs mb-2" style={{ color: C.mute }}>สัดส่วนสุขภาพครุภัณฑ์โดยรวม</div>
           <ResponsiveContainer width="100%" height={180}>
             <PieChart width={400} height={300}>
-  <Pie
-    data={pieData}
-    cx={200}
-    cy={150}
-    labelLine={false}
-    label={renderCustomLabel}
-    outerRadius={80}
-    fill="#8884d8"
-    dataKey="value"
-    onClick={(data) => {
-      if (data.name === "Normal") setSelectedSource(dataSources.normal);
-      else if (data.name === "Damaged") setSelectedSource(dataSources.damaged);
-    }}
-  />
-  <Tooltip />
+              <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" nameKey="name">
+                {pieData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
+              </Pie>
+              <Tooltip />
+              <Legend />
 </PieChart>
           </ResponsiveContainer>
           <div className="flex justify-center gap-3 text-[11px] mt-1" style={{ color: C.slate }}>
@@ -1648,19 +1504,14 @@ function Dashboard({ user, items, borrows, damages, tasks, staffList = [], repai
             <h3 className="text-sm font-bold" style={{ color: C.navy }}>สุขภาพทรัพยากรแยกตามหมวด (Top 8 ชำรุดสูงสุด)</h3>
           </div>
           <ResponsiveContainer width="100%" height={230}>
-            <BarChart width={400} height={300} data={barData}>
-  <CartesianGrid strokeDasharray="3 3" />
-  <XAxis dataKey="name" angle={0} textAnchor="middle" height={60} />
-  <YAxis />
-  <Tooltip />
-  <Bar 
-    dataKey="value" 
-    fill="#82ca9d"
-    onClick={(data) => {
-      if (data.name === "Normal") setSelectedSource(dataSources.normal);
-      else if (data.name === "Damaged") setSelectedSource(dataSources.damaged);
-    }}
-  />
+            <BarChart width={400} height={300} data={byCat}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="cat" angle={0} textAnchor="middle" height={60} />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="ok" name="ปกติ" fill={C.ok} />
+              <Bar dataKey="damaged" name="ชำรุด" fill={C.crimson} />
 </BarChart>
           </ResponsiveContainer>
         </div>
@@ -2946,8 +2797,8 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
 
   const advance = (d, patch) => {
     setDamages((p) => p.map((x) => (x.id === d.id ? { ...x, ...patch } : x)));
-    logAction(`อัปเดตสถานะซ่อม ${d.itemCode} → ${patch.status || d.status}`);
-    if (d._row) postToSheets("updateDamageStatus", { row: d._row, status: patch.status });
+    logAction(`อัปเดต${patch.status ? "สถานะซ่อม" : "ความรุนแรง"} ${d.itemCode} → ${patch.status || patch.severity}`);
+    if (d._row && patch.status) postToSheets("updateDamageStatus", { row: d._row, status: patch.status });
   };
 
   return (
@@ -2980,200 +2831,9 @@ function DamageMaint({ user, items, setItems, damages, setDamages, setTasks, log
                   <td className="px-3 py-2 text-xs">{d.reporter}</td>
                   <td className="px-3 py-2">
                     {manage ? (
-                      const DocUploadForm = ({ onSubmit, onCancel }) => {
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
-  const [file, setFile] = useState(null);
-  const [logo, setLogo] = useState(null);
-  const [logoPreview, setLogoPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleLogoChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      // Validate file type
-      if (!["image/png", "image/jpeg"].includes(selectedFile.type)) {
-        alert("Please upload PNG or JPEG image only");
-        return;
-      }
-      
-      setLogo(selectedFile);
-      
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setLogoPreview(event.target.result);
-      };
-      reader.readAsDataURL(selectedFile);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!title || !category || !file) {
-      alert("Please fill in all required fields");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      // Read main file
-      const fileReader = new FileReader();
-      fileReader.onload = async (event) => {
-        const fileContent = event.target.result;
-
-        let logoBase64 = null;
-        if (logo) {
-          // Read logo file
-          const logoReader = new FileReader();
-          logoReader.onload = async (logoEvent) => {
-            logoBase64 = logoEvent.target.result;
-            
-            // Submit to backend
-            const payload = {
-              title,
-              category,
-              fileContent,
-              fileName: file.name,
-              logoBase64
-            };
-
-            await onSubmit(payload);
-            setLoading(false);
-          };
-          logoReader.readAsDataURL(logo);
-        } else {
-          // Submit without logo
-          const payload = {
-            title,
-            category,
-            fileContent,
-            fileName: file.name,
-            logoBase64: null
-          };
-
-          await onSubmit(payload);
-          setLoading(false);
-        }
-      };
-      fileReader.readAsArrayBuffer(file);
-    } catch (error) {
-      console.error("Error submitting form:", error);
-      setLoading(false);
-    }
-  };
-
-  documents.map((doc) => (
-  <div key={doc.id} className="bg-white rounded-lg shadow-sm p-4 border-l-4" style={{ borderColor: C.primary }}>
-    <div className="flex items-start gap-4 mb-3">
-      <div className="flex-shrink-0">
-        {doc.logoUrl ? (
-          <img
-            src={doc.logoUrl}
-            alt={doc.title}
-            className="w-12 h-12 object-cover rounded-lg"
-          />
-        ) : (
-          <BookOpen size={24} style={{ color: C.primary }} className="w-12 h-12" />
-        )}
-      </div>
-      <div className="flex-1">
-        <h3 className="font-semibold text-gray-900">{doc.title}</h3>
-        <p className="text-sm text-gray-600">{doc.category}</p>
-      </div>
-    </div>
-    <button
-      onClick={() => downloadDocument(doc)}
-      className="text-blue-600 hover:text-blue-700 text-sm font-semibold"
-    >
-      Download →
-    </button>
-  </div>
-))
-  return (
-    <Modal isOpen={true} onClose={onCancel}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <h2 className="text-xl font-bold">Upload Knowledge Document</h2>
-
-        <div>
-          <label className="block text-sm font-semibold mb-2">Document Title *</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Enter document title"
-            className="w-full border rounded-lg px-3 py-2"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold mb-2">Category *</label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full border rounded-lg px-3 py-2"
-          >
-            <option value="">Select a category</option>
-            {Object.entries(DOC_CATEGORIES).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold mb-2">Document File *</label>
-          <input
-            type="file"
-            onChange={(e) => setFile(e.target.files[0])}
-            accept=".pdf,.doc,.docx,.txt"
-            className="w-full border rounded-lg px-3 py-2"
-          />
-          {file && <p className="text-sm text-gray-600 mt-1">Selected: {file.name}</p>}
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold mb-2">Logo/Icon (Optional)</label>
-          <input
-            type="file"
-            onChange={handleLogoChange}
-            accept=".png,.jpg,.jpeg"
-            className="w-full border rounded-lg px-3 py-2"
-          />
-          {logoPreview && (
-            <div className="mt-3">
-              <p className="text-sm text-gray-600 mb-2">Logo Preview:</p>
-              <img
-                src={logoPreview}
-                alt="Logo preview"
-                className="w-20 h-20 object-cover rounded-lg border"
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-2 pt-4">
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex-1 bg-blue-600 text-white rounded-lg py-2 font-semibold hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "Uploading..." : "Upload"}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 bg-gray-300 text-gray-800 rounded-lg py-2 font-semibold hover:bg-gray-400"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-};
+                      <select value={d.severity} onChange={(e) => advance(d, { severity: e.target.value })} style={{ ...inputStyle, padding: "3px 6px", fontSize: 12, width: 110 }}>
+                        {SEVERITY.map((severity) => <option key={severity}>{severity}</option>)}
+                      </select>
                     ) : <span className="text-xs">{d.severity}</span>}
                   </td>
                   <td className="px-3 py-2">
@@ -4981,12 +4641,6 @@ function BudgetView({ user, staffList, logAction }) {
           </table>
         </div>
       )}
-
-      <DataSourceModal 
-  isOpen={!!selectedSource}
-  onClose={() => setSelectedSource(null)}
-  sourceData={selectedSource}
-/>
 
       {showNewBudget && <Modal title="สร้างโครงการงบประมาณ" onClose={() => setShowNewBudget(false)} wide><BudgetForm staffList={staffList} onSubmit={submitBudget} /></Modal>}
       {showIncome && <Modal title="บันทึกรายรับ" onClose={() => setShowIncome(false)}><IncomeForm onSubmit={submitIncome} /></Modal>}
